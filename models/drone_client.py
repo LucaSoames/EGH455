@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import depthai as dai
 
-LAPTOP_URL = os.environ.get("LAPTOP_URL", "http://192.168.86.249:5000")
+LAPTOP_URL = os.environ.get("LAPTOP_URL", "http://192.168.86.246:5000")
 POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
 
@@ -31,31 +31,76 @@ try:
 except Exception:
     servo_motor = None
 
+def parse_yolo_output(output, conf_threshold=0.35, iou_threshold=0.45, img_size=640):
+    """Parse YOLOv11 output and apply NMS"""
+    # YOLOv11 output shape: [1, 84, 8400] where 84 = 4 (bbox) + 80 (classes for COCO) 
+    # For our model: [1, 8, 8400] where 8 = 4 (bbox) + 4 (our classes)
+    output = output[0]  # Remove batch dimension: [8, 8400]
+    
+    # Transpose to [8400, 8]
+    output = output.transpose()
+    
+    # Extract bounding boxes and class scores
+    boxes = output[:, :4]  # [8400, 4] - x_center, y_center, width, height (normalized)
+    scores = output[:, 4:]  # [8400, 4] - class scores
+    
+    detections = []
+    
+    for i in range(len(boxes)):
+        # Get class with highest score
+        class_scores = scores[i]
+        class_id = np.argmax(class_scores)
+        confidence = class_scores[class_id]
+        
+        if confidence >= conf_threshold:
+            # Convert from center format to corner format
+            x_center, y_center, width, height = boxes[i]
+            
+            # Convert from normalized coordinates to pixel coordinates
+            x_center *= img_size
+            y_center *= img_size
+            width *= img_size
+            height *= img_size
+            
+            x1 = x_center - width / 2
+            y1 = y_center - height / 2
+            x2 = x_center + width / 2
+            y2 = y_center + height / 2
+            
+            detections.append({
+                'class_id': int(class_id),
+                'confidence': float(confidence),
+                'bbox': [x1, y1, x2, y2]
+            })
+    
+    # Apply Non-Maximum Suppression
+    if len(detections) > 0:
+        boxes = np.array([d['bbox'] for d in detections])
+        scores = np.array([d['confidence'] for d in detections])
+        
+        # Convert to format expected by cv2.dnn.NMSBoxes
+        indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), conf_threshold, iou_threshold)
+        
+        if len(indices) > 0:
+            indices = indices.flatten()
+            detections = [detections[i] for i in indices]
+    
+    return detections
+
 class OakClient:
     def __init__(self):
         self.pipeline = dai.Pipeline()
         
-        # Create mono camera node
-        # self.cam = self.pipeline.create(dai.node.MonoCamera)
-        # self.cam.setResolution(dai.MonoCameraProperties.SensorResolution.THE_720_P)
-        
         # Create color camera node
         self.cam = self.pipeline.create(dai.node.ColorCamera)
-
         self.cam.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)  # Square input for YOLO
         self.cam.setFps(30)
         self.cam.setInterleaved(False)
         self.cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
         
-        # Create YOLO detection network
-        self.nn = self.pipeline.create(dai.node.YoloDetectionNetwork)
+        # Create generic neural network node instead of YoloDetectionNetwork
+        self.nn = self.pipeline.create(dai.node.NeuralNetwork)
         self.nn.setBlobPath(BLOB_PATH)
-        self.nn.setConfidenceThreshold(MODEL_CONF)
-        self.nn.setNumClasses(NUM_CLASSES)
-        self.nn.setCoordinateSize(4)
-        self.nn.setAnchors([])
-        self.nn.setAnchorMasks({})
-        self.nn.setIouThreshold(MODEL_IOU)
         self.nn.setNumInferenceThreads(2)
         self.nn.input.setBlocking(False)
         
@@ -68,13 +113,13 @@ class OakClient:
         self.cam.preview.link(self.rgb_out.input)
         
         self.nn_out = self.pipeline.create(dai.node.XLinkOut)
-        self.nn_out.setStreamName("detections")
+        self.nn_out.setStreamName("nn")
         self.nn.out.link(self.nn_out.input)
         
         # Initialize device and queues
         self.device = dai.Device(self.pipeline)
         self.q_rgb = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
-        self.q_nn = self.device.getOutputQueue("detections", maxSize=4, blocking=False)
+        self.q_nn = self.device.getOutputQueue("nn", maxSize=4, blocking=False)
         
         self.frame = None
         self.detections = []
@@ -89,22 +134,24 @@ class OakClient:
             if rgb_pkt is not None:
                 self.frame = rgb_pkt.getCvFrame()
             
-            # Get detections
+            # Get neural network output
             nn_pkt = self.q_nn.tryGet()
             if nn_pkt is not None:
+                # Get raw output tensor
+                output = nn_pkt.getFirstLayerFp16()
+                output = np.array(output).reshape(1, NUM_CLASSES + 4, -1)  # Reshape to [1, 8, 8400]
+                
+                # Parse YOLO output
+                raw_detections = parse_yolo_output(output, MODEL_CONF, MODEL_IOU, MODEL_IMG_SIZE)
+                
+                # Convert to our detection format
                 detections = []
-                for det in nn_pkt.detections:
-                    # Convert DepthAI detection to our format
+                for det in raw_detections:
                     detection = {
-                        "cls_id": det.label,
-                        "name": CLASS_NAMES.get(det.label, f"class_{det.label}"),
-                        "conf": det.confidence,
-                        "box": [
-                            det.xmin * MODEL_IMG_SIZE,  # x1
-                            det.ymin * MODEL_IMG_SIZE,  # y1
-                            det.xmax * MODEL_IMG_SIZE,  # x2
-                            det.ymax * MODEL_IMG_SIZE   # y2
-                        ]
+                        "cls_id": det['class_id'],
+                        "name": CLASS_NAMES.get(det['class_id'], f"class_{det['class_id']}"),
+                        "conf": det['confidence'],
+                        "box": det['bbox']  # [x1, y1, x2, y2]
                     }
                     detections.append(detection)
                 self.detections = detections

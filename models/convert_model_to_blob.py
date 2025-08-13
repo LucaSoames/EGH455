@@ -3,6 +3,11 @@ from ultralytics import YOLO
 import blobconverter
 import os
 
+"""
+Export YOLOv11n model weights (.pt) to ONNX (.onnx) 
+then convert to OpenVINO blob for OAK-D deployment.
+"""
+
 # Hardcoded paths
 PT_PATH = "models/YOLOv11n.pt"
 ONNX_PATH = "models/YOLOv11n.onnx"

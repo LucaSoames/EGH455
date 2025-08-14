@@ -3,6 +3,7 @@ from ultralytics import YOLO
 from modelconverter.hub import convert
 import sys
 from dotenv import load_dotenv
+import shutil # Import the shutil module
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,6 +53,7 @@ def convert_to_blob():
         sys.exit(1)
 
     print("[INFO] Converting ONNX to .blob via HubAI (RVC2)...")
+    temp_dir = None
     try:
         blob = convert.RVC2(
             path=ONNX_PATH,
@@ -60,6 +62,8 @@ def convert_to_blob():
             tool_version="2022.3.0",
             number_of_shaves=8,  # Adjust based on device capability (drop to 4 if needed)
         )
+        temp_dir = os.path.dirname(blob)
+
         # If the destination blob already exists, remove it first.
         if os.path.exists(BLOB_PATH):
             os.remove(BLOB_PATH)
@@ -68,6 +72,11 @@ def convert_to_blob():
     except Exception as e:
         print(f"[ERROR] Blob conversion failed: {e}")
         sys.exit(1)
+    finally:
+        # Clean up the temporary directory after we are done
+        if temp_dir and os.path.isdir(temp_dir):
+            print(f"[INFO] Removing temporary directory: {temp_dir}")
+            shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
     export_to_onnx()

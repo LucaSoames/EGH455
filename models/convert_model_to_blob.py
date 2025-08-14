@@ -2,32 +2,43 @@ import os
 from ultralytics import YOLO
 from modelconverter.hub import convert
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Paths
 PT_PATH = "models/YOLOv11n.pt"
 ONNX_PATH = "models/YOLOv11n.onnx"
 BLOB_PATH = "models/YOLOv11n.blob"
 IMG_SIZE = 640
-OPSET = 11
+OPSET = 22
 
-# You can set it in your terminal before running the script:
-# set HUBAI_API_KEY="your_api_key" (Windows)
-# export HUBAI_API_KEY="your_api_key" (Linux/macOS)
 HUBAI_API_KEY = os.getenv("HUBAI_API_KEY")
 
 def export_to_onnx():
     """Exports the PyTorch model to ONNX format."""
     print(f"[INFO] Loading model from {PT_PATH}...")
     model = YOLO(PT_PATH)
-    
+
+    # Ensure the target ONNX gets overwritten
+    if os.path.exists(ONNX_PATH):
+        print(f"[INFO] Removing existing ONNX: {ONNX_PATH}")
+        os.remove(ONNX_PATH)
+
     print("[INFO] Exporting to ONNX...")
-    # The export function will create the .onnx file in the same directory
-    model.export(
-        format="onnx", 
-        opset=OPSET, 
-        imgsz=IMG_SIZE
-    )
     
+    model.export(
+        format="onnx",
+        opset=OPSET,
+        imgsz=IMG_SIZE,
+    )
+
+    # Ensure the exported file ends up at ONNX_PATH
+    produced = PT_PATH.rsplit(".", 1)[0] + ".onnx"
+    if os.path.exists(produced) and produced != ONNX_PATH and not os.path.exists(ONNX_PATH):
+        os.replace(produced, ONNX_PATH)
+
     if os.path.exists(ONNX_PATH):
         print(f"[INFO] ONNX model saved to {ONNX_PATH}")
     else:
@@ -42,7 +53,7 @@ def convert_to_blob():
 
     print("[INFO] Converting ONNX to .blob via HubAI (RVC2)...")
     try:
-        tmp_blob_path = convert.RVC2(
+        blob = convert.RVC2(
             path=ONNX_PATH,
             api_key=HUBAI_API_KEY,
             target_precision="FP16",
@@ -52,7 +63,7 @@ def convert_to_blob():
         # If the destination blob already exists, remove it first.
         if os.path.exists(BLOB_PATH):
             os.remove(BLOB_PATH)
-        os.rename(tmp_blob_path, BLOB_PATH)
+        os.rename(blob, BLOB_PATH)
         print(f"[INFO] Blob ready: {BLOB_PATH}")
     except Exception as e:
         print(f"[ERROR] Blob conversion failed: {e}")

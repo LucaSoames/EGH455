@@ -56,15 +56,16 @@ class OakClient:
     def __init__(self):
         self.pipeline = dai.Pipeline()
         
-        # Create color camera node
+        # Create ColorCamera node for the RGB sensor.
+        # This is the correct node for the color camera in the newer API.
         self.cam = self.pipeline.create(dai.node.ColorCamera)
+        self.cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         self.cam.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
         self.cam.setFps(30)
         self.cam.setInterleaved(False)
-        self.cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
         
-        # Create YoloDetectionNetwork node instead of NeuralNetwork
-        self.nn = self.pipeline.create(dai.node.YoloDetectionNetwork)
+        # Create DetectionNetwork node (replaces YoloDetectionNetwork)
+        self.nn = self.pipeline.create(dai.node.DetectionNetwork)
         self.nn.setBlobPath(BLOB_PATH)
         self.nn.setConfidenceThreshold(MODEL_CONF)
         self.nn.setNumClasses(NUM_CLASSES)
@@ -82,14 +83,19 @@ class OakClient:
         # Create outputs
         self.rgb_out = self.pipeline.create(dai.node.XLinkOut)
         self.rgb_out.setStreamName("rgb")
+        # The DetectionNetwork node doesn't have a direct passthrough for the frame.
+        # We link the camera's preview output directly to the XLinkOut.
         self.cam.preview.link(self.rgb_out.input)
         
         self.nn_out = self.pipeline.create(dai.node.XLinkOut)
         self.nn_out.setStreamName("nn")
         self.nn.out.link(self.nn_out.input)
         
-        # Initialize device and queues
-        self.device = dai.Device(self.pipeline)
+        # Initialize device and start pipeline
+        self.device = dai.Device()
+        self.device.startPipeline(self.pipeline)
+
+        # Get queues after pipeline is started
         self.q_rgb = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
         self.q_nn = self.device.getOutputQueue("nn", maxSize=4, blocking=False)
         

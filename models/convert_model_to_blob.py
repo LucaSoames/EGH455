@@ -10,13 +10,10 @@ BLOB_PATH = "models/YOLOv11n.blob"
 IMG_SIZE = 640
 OPSET = 11
 
-# It is recommended to set the API key as an environment variable
-# for security reasons, rather than hardcoding it in the script.
 # You can set it in your terminal before running the script:
 # set HUBAI_API_KEY="your_api_key" (Windows)
 # export HUBAI_API_KEY="your_api_key" (Linux/macOS)
-# HUBAI_API_KEY = os.getenv("HUBAI_API_KEY")
-HUBAI_API_KEY = "tapi.Uj8IyGTlWIYAfWiYqZGYAQ.kgJQre5wYnWe-WQnKjhsd6UMUEO0gbMkgEb5c09HKHF2hR0osrqedQPOGF7XdNzS1hVfKT9MZCY-POcD09IE8A"
+HUBAI_API_KEY = os.getenv("HUBAI_API_KEY")
 
 def export_to_onnx():
     """Exports the PyTorch model to ONNX format."""

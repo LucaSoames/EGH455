@@ -42,8 +42,6 @@ def convert_to_blob():
 
     print("[INFO] Converting ONNX to .blob via HubAI (RVC2)...")
     try:
-        # Use the recommended tool version for newer models.
-        # Normalization args are typically not needed as they are handled by the ONNX export.
         tmp_blob_path = convert.RVC2(
             path=ONNX_PATH,
             api_key=HUBAI_API_KEY,

@@ -31,61 +31,26 @@ try:
 except Exception:
     servo_motor = None
 
-def parse_yolo_output(output, conf_threshold=0.35, iou_threshold=0.45, img_size=640):
-    """Parse YOLOv11 output and apply NMS"""
-    # YOLOv11 output shape: [1, 84, 8400] where 84 = 4 (bbox) + 80 (classes for COCO) 
-    # For our model: [1, 8, 8400] where 8 = 4 (bbox) + 4 (our classes)
-    output = output[0]  # Remove batch dimension: [8, 8400]
-    
-    # Transpose to [8400, 8]
-    output = output.transpose()
-    
-    # Extract bounding boxes and class scores
-    boxes = output[:, :4]  # [8400, 4] - x_center, y_center, width, height (normalized)
-    scores = output[:, 4:]  # [8400, 4] - class scores
-    
-    detections = []
-    
-    for i in range(len(boxes)):
-        # Get class with highest score
-        class_scores = scores[i]
-        class_id = np.argmax(class_scores)
-        confidence = class_scores[class_id]
+def draw_detections(frame, detections):
+    """Draws bounding boxes and labels on the frame."""
+    for det in detections:
+        # The YoloDetectionNetwork node provides coordinates normalized to the frame size (0.0 to 1.0)
+        x1 = int(det.xmin * frame.shape[1])
+        y1 = int(det.ymin * frame.shape[0])
+        x2 = int(det.xmax * frame.shape[1])
+        y2 = int(det.ymax * frame.shape[0])
         
-        if confidence >= conf_threshold:
-            # Convert from center format to corner format
-            x_center, y_center, width, height = boxes[i]
-            
-            # Convert from normalized coordinates to pixel coordinates
-            x_center *= img_size
-            y_center *= img_size
-            width *= img_size
-            height *= img_size
-            
-            x1 = x_center - width / 2
-            y1 = y_center - height / 2
-            x2 = x_center + width / 2
-            y2 = y_center + height / 2
-            
-            detections.append({
-                'class_id': int(class_id),
-                'confidence': float(confidence),
-                'bbox': [x1, y1, x2, y2]
-            })
-    
-    # Apply Non-Maximum Suppression
-    if len(detections) > 0:
-        boxes = np.array([d['bbox'] for d in detections])
-        scores = np.array([d['confidence'] for d in detections])
+        label = f"{CLASS_NAMES.get(det.label, 'Unknown')} {det.confidence:.2f}"
         
-        # Convert to format expected by cv2.dnn.NMSBoxes
-        indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), conf_threshold, iou_threshold)
-        
-        if len(indices) > 0:
-            indices = indices.flatten()
-            detections = [detections[i] for i in indices]
-    
-    return detections
+        color = (0, 255, 0) # Default green
+        if "valve" in CLASS_NAMES.get(det.label, ''):
+            color = (255, 0, 0) # Blue for valves
+        elif "gauge" in CLASS_NAMES.get(det.label, '') or "needle" in CLASS_NAMES.get(det.label, ''):
+            color = (0, 0, 255) # Red for gauge parts
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    return frame
 
 class OakClient:
     def __init__(self):
@@ -93,16 +58,23 @@ class OakClient:
         
         # Create color camera node
         self.cam = self.pipeline.create(dai.node.ColorCamera)
-        self.cam.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)  # Square input for YOLO
+        self.cam.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
         self.cam.setFps(30)
         self.cam.setInterleaved(False)
         self.cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
         
-        # Create generic neural network node instead of YoloDetectionNetwork
-        self.nn = self.pipeline.create(dai.node.NeuralNetwork)
+        # Create YoloDetectionNetwork node instead of NeuralNetwork
+        self.nn = self.pipeline.create(dai.node.YoloDetectionNetwork)
         self.nn.setBlobPath(BLOB_PATH)
-        self.nn.setNumInferenceThreads(2)
-        self.nn.input.setBlocking(False)
+        self.nn.setConfidenceThreshold(MODEL_CONF)
+        self.nn.setNumClasses(NUM_CLASSES)
+        
+        # Configure for YOLOv8-style output which is similar to v11
+        # The model seems to have 1 anchor per cell, so we set mask to [0,1,2] for a single scale.
+        self.nn.setCoordinateSize(4)
+        self.nn.setAnchors([]) # YOLOv8/v11 are anchor-free
+        self.nn.setAnchorMasks({})
+        self.nn.setIouThreshold(MODEL_IOU)
         
         # Link camera to neural network
         self.cam.preview.link(self.nn.input)
@@ -129,32 +101,18 @@ class OakClient:
 
     def _loop(self):
         while self.running:
-            # Get RGB frame
-            rgb_pkt = self.q_rgb.tryGet()
+            # Use get() to ensure packets are synced. tryGet() can lead to mismatches.
+            rgb_pkt = self.q_rgb.get()
+            nn_pkt = self.q_nn.get()
+
             if rgb_pkt is not None:
                 self.frame = rgb_pkt.getCvFrame()
-            
-            # Get neural network output
-            nn_pkt = self.q_nn.tryGet()
+
             if nn_pkt is not None:
-                # Get raw output tensor
-                output = nn_pkt.getFirstLayerFp16()
-                output = np.array(output).reshape(1, NUM_CLASSES + 4, -1)  # Reshape to [1, 8, 8400]
-                
-                # Parse YOLO output
-                raw_detections = parse_yolo_output(output, MODEL_CONF, MODEL_IOU, MODEL_IMG_SIZE)
-                
-                # Convert to our detection format
-                detections = []
-                for det in raw_detections:
-                    detection = {
-                        "cls_id": det['class_id'],
-                        "name": CLASS_NAMES.get(det['class_id'], f"class_{det['class_id']}"),
-                        "conf": det['confidence'],
-                        "box": det['bbox']  # [x1, y1, x2, y2]
-                    }
-                    detections.append(detection)
-                self.detections = detections
+                self.detections = nn_pkt.detections
+                # Draw detections on the frame
+                if self.frame is not None:
+                    self.frame = draw_detections(self.frame, self.detections)
             
             time.sleep(0.001)
 
@@ -213,39 +171,38 @@ def main():
                 continue
 
             now = time.time()
-            run_det = (int(now * 10) % 3 == 0)  # ~3-4 Hz for ArUco only
-            ids = []
+            # ArUco detection is now performed on the frame that may have detections drawn on it.
+            # This is fine as ArUco uses the grayscale image.
+            ids = vis.aruco_ids(f)
             valve_state = None
             pressure = None
 
-            if run_det:
-                ids = vis.aruco_ids(f)
-
-            # Get YOLO detections (running continuously on OAK-D)
+            # Get YOLO detections (already processed in the background thread)
             dets = oak.get_detections()
 
             # Extract valve open/closed (pick highest confidence if both)
-            open_candidates = [d for d in dets if d["name"] == "valve_open"]
-            closed_candidates = [d for d in dets if d["name"] == "valve_closed"]
+            open_candidates = [d for d in dets if CLASS_NAMES.get(d.label) == "valve_open"]
+            closed_candidates = [d for d in dets if CLASS_NAMES.get(d.label) == "valve_closed"]
             if open_candidates or closed_candidates:
-                best_open = max(open_candidates, key=lambda d: d["conf"]) if open_candidates else None
-                best_closed = max(closed_candidates, key=lambda d: d["conf"]) if closed_candidates else None
+                best_open = max(open_candidates, key=lambda d: d.confidence) if open_candidates else None
+                best_closed = max(closed_candidates, key=lambda d: d.confidence) if closed_candidates else None
                 if best_open and best_closed:
-                    valve_state = "open" if best_open["conf"] >= best_closed["conf"] else "closed"
+                    valve_state = "open" if best_open.confidence >= best_closed.confidence else "closed"
                 elif best_open:
                     valve_state = "open"
                 elif best_closed:
                     valve_state = "closed"
 
             # Needle tip / gauge centre for pressure reading
-            needle_tip = next((d for d in dets if d["name"] == "needle_tip"), None)
-            gauge_centre = next((d for d in dets if d["name"] == "gauge_centre"), None)
+            needle_tip = next((d for d in dets if CLASS_NAMES.get(d.label) == "needle_tip"), None)
+            gauge_centre = next((d for d in dets if CLASS_NAMES.get(d.label) == "gauge_centre"), None)
             if needle_tip and gauge_centre:
-                # Use centers of bounding boxes
-                tx = (needle_tip["box"][0] + needle_tip["box"][2]) / 2.0
-                ty = (needle_tip["box"][1] + needle_tip["box"][3]) / 2.0
-                cx = (gauge_centre["box"][0] + gauge_centre["box"][2]) / 2.0
-                cy = (gauge_centre["box"][1] + gauge_centre["box"][3]) / 2.0
+                # Use centers of bounding boxes (coordinates are 0.0-1.0)
+                tx = (needle_tip.xmin + needle_tip.xmax) / 2.0
+                ty = (needle_tip.ymin + needle_tip.ymax) / 2.0
+                cx = (gauge_centre.xmin + gauge_centre.xmax) / 2.0
+                cy = (gauge_centre.ymin + gauge_centre.ymax) / 2.0
+                # We don't need to scale by image size for angle calculation
                 angle = (math.degrees(math.atan2(cy - ty, tx - cx)) + 360) % 360
                 pressure = compute_pressure(angle)
 

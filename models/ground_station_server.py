@@ -18,7 +18,7 @@ def index():
     <html><head><title>Drone Dashboard</title></head>
     <body>
       <h2>Live Stream</h2>
-      <img src="/stream" style="width:640px;height:480px;border:1px solid #333"/>
+      <img src="/stream" style="width:640px;height:640px;border:1px solid #333"/>
       <h3>Status</h3>
       <pre id="status"></pre>
       <button onclick="drill()">Trigger Drill</button>

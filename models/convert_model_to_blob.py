@@ -13,7 +13,7 @@ PT_PATH = "models/YOLOv11n.pt"
 ONNX_PATH = "models/YOLOv11n.onnx"
 BLOB_PATH = "models/YOLOv11n.blob"
 IMG_SIZE = 640
-OPSET = 22
+OPSET = 17
 
 HUBAI_API_KEY = os.getenv("HUBAI_API_KEY")
 
@@ -60,7 +60,7 @@ def convert_to_blob():
             api_key=HUBAI_API_KEY,
             target_precision="FP16",
             tool_version="2022.3.0",
-            number_of_shaves=8,  # Adjust based on device capability (drop to 4 if needed)
+            number_of_shaves=4,  # Adjust based on device capability (drop to 4 if needed)
         )
         temp_dir = os.path.dirname(blob)
 

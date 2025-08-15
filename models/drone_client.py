@@ -4,19 +4,21 @@ import cv2
 import numpy as np
 import depthai as dai
 
-# Constants (keep as-is)
 LAPTOP_URL = os.environ.get("LAPTOP_URL", "http://192.168.86.246:5000")
 POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
-BLOB_PATH = "/home/pi/EGH455/models/YOLOv11n.blob"
+
+BLOB_PATH = "/home/pi/EGH455/models/YOLOv11n.blob"  # Updated to use .blob file
 MODEL_IMG_SIZE = 640
 MODEL_CONF = 0.35
 MODEL_IOU = 0.45
-NUM_CLASSES = 4
-GAUGE_MIN_ANGLE = 225.0
+NUM_CLASSES = 4  # Update this based on your model (gauge_centre, needle_tip, valve_closed, valve_open)
+GAUGE_MIN_ANGLE = 225.0   # adjust after calibration
 GAUGE_MAX_ANGLE = -45.0
 GAUGE_MIN_P = 0.0
 GAUGE_MAX_P = 100.0
+
+# Class names mapping - updated based on your trained model
 CLASS_NAMES = {
     0: "gauge_centre",
     1: "needle_tip", 
@@ -32,6 +34,7 @@ except Exception:
 def draw_detections(frame, detections):
     """Draws bounding boxes and labels on the frame."""
     for det in detections:
+        # The YoloDetectionNetwork node provides coordinates normalized to the frame size (0.0 to 1.0)
         x1 = int(det.xmin * frame.shape[1])
         y1 = int(det.ymin * frame.shape[0])
         x2 = int(det.xmax * frame.shape[1])
@@ -52,51 +55,50 @@ def draw_detections(frame, detections):
 class OakClient:
     def __init__(self):
         self.pipeline = dai.Pipeline()
-        
-        # Create Camera node (DepthAI v3.0.0rc4)
+
+        # --- Camera Node ---
         self.cam = self.pipeline.create(dai.node.Camera)
-        
-        # ImageManip for resizing frames to model input size
+        self.cam.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
+        self.cam.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+
+        # --- ImageManip for NN ---
         self.manip = self.pipeline.create(dai.node.ImageManip)
-        
-        # --- FIX ---
-        # DO NOT set resize on ImageManip. The NN node will handle it.
-        # Only set the color order, using the correct enum for this version.
-        self.manip.initialConfig.setFrameType(dai.ImgFrame.Type.BGR888p)
-        
-        # Connect camera to ImageManip. Your log confirmed 'raw' is the correct output.
-        self.cam.raw.link(self.manip.inputImage)
-        
-        # YOLO neural network (using DetectionNetwork for v3.0.0rc4)
-        self.nn = self.pipeline.create(dai.node.DetectionNetwork)
+        self.manip.setMaxOutputFrameSize(MODEL_IMG_SIZE * MODEL_IMG_SIZE * 3)
+        self.manip.initialConfig.setFrameType(dai.RawImgFrame.Type.BGR888p)
+        self.cam.preview.link(self.manip.inputImage)
+
+        # --- Neural Network Node ---
+        self.nn = self.pipeline.create(dai.node.YoloDetectionNetwork)
         self.nn.setBlobPath(BLOB_PATH)
         self.nn.setConfidenceThreshold(MODEL_CONF)
         self.nn.setIouThreshold(MODEL_IOU)
         self.nn.setNumClasses(NUM_CLASSES)
         self.nn.setCoordinateSize(4)
-        self.nn.setAnchors([])
-        self.nn.setAnchorMasks({})
-        # This line is now responsible for ensuring frames are resized to 640x640
-        self.nn.setInputSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
-        
-        # Connect ImageManip output to Neural Network input
+        self.nn.setAnchors([10,13, 16,30, 33,23, 30,61, 62,45, 59,119, 116,90, 156,198, 373,326])
+        self.nn.setAnchorMasks({ "side8400": [0,1,2,3,4,5,6,7,8] })
+        # Connect the ImageManip output to the NN input
         self.manip.out.link(self.nn.input)
-        
-        # Create output streams to host
+
+        # --- Output Streams ---
+        # Get preview frames directly from camera
         self.rgb_out = self.pipeline.create(dai.node.XLinkOut)
         self.rgb_out.setStreamName("rgb")
-        self.manip.out.link(self.rgb_out.input)
-        
+        self.cam.preview.link(self.rgb_out.input)
+
+        # NN stream gets the detections from the NN node
         self.nn_out = self.pipeline.create(dai.node.XLinkOut)
         self.nn_out.setStreamName("nn")
         self.nn.out.link(self.nn_out.input)
-        
-        # Create device and queues
+
+        # --- Device and Queues ---
         self.device = dai.Device(self.pipeline)
         self.q_rgb = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
         self.q_nn = self.device.getOutputQueue("nn", maxSize=4, blocking=False)
-        
-        self.frame = None
+
+        # --- Thread-safe state management ---
+        self.lock = threading.Lock()
+        self.raw_frame = None
+        self.annotated_frame = None
         self.detections = []
         self.running = True
         self.thread = threading.Thread(target=self._loop, daemon=True)
@@ -104,33 +106,49 @@ class OakClient:
 
     def _loop(self):
         while self.running:
-            # Get packets from device
-            rgb_pkt = self.q_rgb.get()
-            nn_pkt = self.q_nn.get()
+            # Using tryGet() is important to prevent blocking
+            rgb_pkt = self.q_rgb.tryGet()
+            nn_pkt = self.q_nn.tryGet()
 
+            new_frame = None
             if rgb_pkt is not None:
-                self.frame = rgb_pkt.getCvFrame()
+                # Get frame in a format suitable for OpenCV
+                new_frame = rgb_pkt.getCvFrame()
 
+            new_detections = None
             if nn_pkt is not None:
-                self.detections = nn_pkt.detections
-                # Draw detections on the frame
-                if self.frame is not None:
-                    self.frame = draw_detections(self.frame, self.detections)
-            
+                new_detections = nn_pkt.detections
+
+            with self.lock:
+                if new_frame is not None:
+                    self.raw_frame = new_frame
+                if new_detections is not None:
+                    self.detections = new_detections
+                
+                if self.raw_frame is not None:
+                    display_frame = self.raw_frame.copy()
+                    draw_detections(display_frame, self.detections)
+                    self.annotated_frame = display_frame
+        
             time.sleep(0.001)
 
     def get_frame(self):
-        return self.frame
+        """Returns the latest annotated frame."""
+        with self.lock:
+            return self.annotated_frame
     
     def get_detections(self):
-        return self.detections
+        """Returns a copy of the latest detections."""
+        with self.lock:
+            return list(self.detections)
 
     def close(self):
         self.running = False
+        time.sleep(0.1)
         try:
             self.device.close()
-        except:
-            pass
+        except Exception as e:
+            print(f"Error closing device: {e}")
 
 class Vision:
     def __init__(self):
@@ -153,7 +171,6 @@ def compute_pressure(angle_deg):
     t = 0.0 if span == 0 else max(0.0, min(1.0, pos / span))
     return GAUGE_MIN_P + t * (GAUGE_MAX_P - GAUGE_MIN_P)
 
-# Main function - no changes needed
 def main():
     if not os.path.isfile(BLOB_PATH):
         print(f"Missing blob file: {BLOB_PATH}")
@@ -175,10 +192,13 @@ def main():
                 continue
 
             now = time.time()
+            # ArUco detection is now performed on the frame that may have detections drawn on it.
+            # This is fine as ArUco uses the grayscale image.
             ids = vis.aruco_ids(f)
             valve_state = None
             pressure = None
 
+            # Get YOLO detections (already processed in the background thread)
             dets = oak.get_detections()
 
             # Extract valve open/closed (pick highest confidence if both)
@@ -198,10 +218,12 @@ def main():
             needle_tip = next((d for d in dets if CLASS_NAMES.get(d.label) == "needle_tip"), None)
             gauge_centre = next((d for d in dets if CLASS_NAMES.get(d.label) == "gauge_centre"), None)
             if needle_tip and gauge_centre:
+                # Use centers of bounding boxes (coordinates are 0.0-1.0)
                 tx = (needle_tip.xmin + needle_tip.xmax) / 2.0
                 ty = (needle_tip.ymin + needle_tip.ymax) / 2.0
                 cx = (gauge_centre.xmin + gauge_centre.xmax) / 2.0
                 cy = (gauge_centre.ymin + gauge_centre.ymax) / 2.0
+                # We don't need to scale by image size for angle calculation
                 angle = (math.degrees(math.atan2(cy - ty, tx - cx)) + 360) % 360
                 pressure = compute_pressure(angle)
 

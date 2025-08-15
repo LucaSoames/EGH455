@@ -8,7 +8,7 @@ import RPi.GPIO as GPIO
 import time
 
 # === Constants (edit these to calibrate your setup) ===
-SERVO_PIN = 12             # BCM pin for PWM signal #Motor 2 is mapped to GPIO 13 #Motor 1 is mapped to GPIO 12
+SERVO_PIN = 13            # BCM pin for PWM signal #Motor 2 is mapped to GPIO 13 #Motor 1 is mapped to GPIO 12
 PWM_FREQUENCY = 50         # PWM frequency in Hz
 
 # Duty cycles for continuous-rotation servo control

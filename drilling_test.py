@@ -24,7 +24,7 @@ MAX_REVERSE_DUTY    = 2.5   # ~0.5 ms pulse = full-speed reverse
 # Movement parameters
 CW_SPEED_PERCENT    = 100.0  # clockwise speed (0 to +100)
 CCW_SPEED_PERCENT   = -100.0 # counter-clockwise speed (0 to –100)
-CW_DURATION         = 3.0    # seconds to run clockwise
+CW_DURATION         = 3.0    # seconds to run clockwisegpioinfo | egrep 'gpiochip| line *12:| line *13:'
 CCW_DURATION        = 3.0    # seconds to run counter-clockwise
 PAUSE_BETWEEN       = 0.5    # optional pause between actions
 

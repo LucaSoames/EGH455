@@ -1,59 +1,42 @@
-ads1015==1.0.0
-astral==3.2
-attrs==25.3.0
-blinker==1.9.0
-bme280==0.7
-certifi==2025.7.14
-cffi==1.17.1
-charset-normalizer==2.0.12
-click==8.2.1
-ConfigArgParse==1.7.1
-dash==3.2.0
-depthai>=3.0.0
-enviroplus==1.0.2
-fastjsonschema==2.21.1
-Flask==3.1.1
-font-roboto==0.0.1
-fonts==0.0.3
-gpiod==2.3.0
-gpiodevice==0.0.5
-i2cdevice==1.0.0
-idna==3.10
-importlib_metadata==8.7.0
-itsdangerous==2.2.0
-Jinja2==3.1.6
-jsonschema==4.25.0
-jsonschema-specifications==2025.4.1
-jupyter_core==5.8.1
-ltr559==1.0.0
-MarkupSafe==3.0.2
-narwhals==2.0.1
-nbformat==5.10.4
-nest_asyncio==1.6.0
-numpy>=1.24,<2
-open3d==0.18.0
-opencv-contrib-python-headless>=4.8,<5
-packaging==25.0
-paho-mqtt==2.1.0
-pimoroni-bme280==1.0.0
-platformdirs==4.3.8
-plotly==6.2.0
-pms5003==1.0.1
-pycparser==2.22
-pyserial==3.5
-pytz==2025.2
-referencing==0.36.2
+############################
+# Core runtime dependencies #
+############################
+# OAK-D / DepthAI
+depthai>=2.18,<3
+blobconverter>=1.4.3
+
+# Computer vision
+opencv-contrib-python>=4.9,<5; sys_platform == "win32"
+# To enable cv2.imshow on Raspberry Pi Desktop, switch to non-headless build:
+# opencv-contrib-python>=4.9,<5; sys_platform == "linux"
+opencv-contrib-python-headless>=4.9,<5; sys_platform != "win32"
+numpy>=2.0,<3
+
+# Web server (Flask 3.0.x stack)
+Flask==3.0.3
+Werkzeug>=3.0,<3.1
+Jinja2>=3.1
+itsdangerous>=2.1
+click>=8.1
+
+# HTTP client
 requests>=2.31
-retrying==1.4.1
-roboflowoak==0.0.12
-rpds-py==0.26.0
-RPi.GPIO==0.7.1
-smbus2==0.5.0
-sounddevice==0.5.2
-spidev==3.7
-st7735==1.0.0
-traitlets==5.14.3
-typing_extensions==4.14.1
-urllib3==1.26.20
-Werkzeug==3.1.3
-zipp==3.23.0
+
+# Packaging utilities
+packaging>=24.0
+
+#########################################
+# Raspberry Pi sensor stack (Linux only) #
+#########################################
+RPi.GPIO==0.7.1; sys_platform == "linux"
+gpiod==2.3.0; sys_platform == "linux"
+gpiodevice==0.0.5; sys_platform == "linux"
+spidev==3.7; sys_platform == "linux"
+smbus2==0.5.0; sys_platform == "linux"
+enviroplus==1.0.2; sys_platform == "linux"
+bme280==0.7; sys_platform == "linux"
+ltr559==1.0.0; sys_platform == "linux"
+pms5003==1.0.1; sys_platform == "linux"
+st7735==1.0.0; sys_platform == "linux"
+i2cdevice==1.0.0; sys_platform == "linux"
+ads1015==1.0.0; sys_platform == "linux"

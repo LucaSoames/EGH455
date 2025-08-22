@@ -52,73 +52,56 @@ def draw_detections(frame, detections):
 
 class OakClient:
     def __init__(self):
-        # Create two separate pipelines to avoid conflicts
+        # Create single unified pipeline
+        self.pipeline = dai.Pipeline()
         
-        # Pipeline 1: Camera only for video
-        self.camera_pipeline = dai.Pipeline()
-        self.cam_rgb = self.camera_pipeline.create(dai.node.ColorCamera)
+        # Create camera for both display and NN
+        self.cam_rgb = self.pipeline.create(dai.node.ColorCamera)
         self.cam_rgb.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
         self.cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         self.cam_rgb.setInterleaved(False)
         self.cam_rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
         self.cam_rgb.setFps(30)
 
-        self.xout_rgb = self.camera_pipeline.create(dai.node.XLinkOut)
+        # RGB output for display
+        self.xout_rgb = self.pipeline.create(dai.node.XLinkOut)
         self.xout_rgb.setStreamName("rgb")
         self.cam_rgb.preview.link(self.xout_rgb.input)
 
-        # Connect to device for camera
-        try:
-            self.camera_device = dai.Device(self.camera_pipeline)
-            print(f"Camera connected to device: {self.camera_device.getDeviceInfo().getMxId()}")
-            self.q_rgb = self.camera_device.getOutputQueue("rgb", maxSize=4, blocking=False)
-        except Exception as e:
-            print(f"Failed to initialize camera: {e}")
-            raise
+        # Initialize NN components only if blob exists
+        self.has_nn = os.path.exists(BLOB_PATH)
+        self.detection_nn = None
+        self.xout_nn = None
+        
+        if self.has_nn:
+            print(f"Blob found at {BLOB_PATH}, initializing YOLO detection network")
+            # Create YOLO detection network
+            self.detection_nn = self.pipeline.create(dai.node.YoloDetectionNetwork)
+            self.detection_nn.setConfidenceThreshold(MODEL_CONF)
+            self.detection_nn.setNumClasses(NUM_CLASSES)
+            self.detection_nn.setCoordinateSize(4)
+            self.detection_nn.setIouThreshold(MODEL_IOU)
+            self.detection_nn.setBlobPath(BLOB_PATH)
+            
+            # Connect camera to NN (no anchors for YOLOv8/Roboflow compatibility)
+            self.cam_rgb.preview.link(self.detection_nn.input)
+            
+            # NN output
+            self.xout_nn = self.pipeline.create(dai.node.XLinkOut)
+            self.xout_nn.setStreamName("detections")
+            self.detection_nn.out.link(self.xout_nn.input)
+        else:
+            print(f"Blob not found at {BLOB_PATH}, running camera-only mode")
 
-        # Pipeline 2: Neural Network for object detection
-        self.nn_pipeline = dai.Pipeline()
-        
-        # Create camera for NN
-        self.cam_nn = self.nn_pipeline.create(dai.node.ColorCamera)
-        self.cam_nn.setPreviewSize(MODEL_IMG_SIZE, MODEL_IMG_SIZE)
-        self.cam_nn.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-        self.cam_nn.setInterleaved(False)
-        self.cam_nn.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
-        self.cam_nn.setFps(30)
-        
-        # Create YOLO detection network
-        self.detection_nn = self.nn_pipeline.create(dai.node.YoloDetectionNetwork)
-        self.detection_nn.setConfidenceThreshold(MODEL_CONF)
-        self.detection_nn.setNumClasses(NUM_CLASSES)
-        self.detection_nn.setCoordinateSize(4)
-        self.detection_nn.setIouThreshold(MODEL_IOU)
-        self.detection_nn.setBlobPath(BLOB_PATH)
-        
-        # YOLO anchor configuration
-        anchors = [10,13, 16,30, 33,23, 30,61, 62,45, 59,119, 116,90, 156,198, 373,326]
-        anchorMasks = {"side8400": [0,1,2,3,4,5,6,7,8]}
-        self.detection_nn.setAnchors(anchors)
-        self.detection_nn.setAnchorMasks(anchorMasks)
-        
-        # Connect camera to NN
-        self.cam_nn.preview.link(self.detection_nn.input)
-        
-        # NN output
-        self.xout_nn = self.nn_pipeline.create(dai.node.XLinkOut)
-        self.xout_nn.setStreamName("detections")
-        self.detection_nn.out.link(self.xout_nn.input)
-        
-        # Connect to device for NN (using a separate device instance)
+        # Connect to single device
         try:
-            self.nn_device = dai.Device(self.nn_pipeline)
-            print(f"NN connected to device: {self.nn_device.getDeviceInfo().getMxId()}")
-            self.q_nn = self.nn_device.getOutputQueue("detections", maxSize=4, blocking=False)
+            self.device = dai.Device(self.pipeline)
+            print(f"Connected to device: {self.device.getDeviceInfo().getMxId()}")
+            self.q_rgb = self.device.getOutputQueue("rgb", maxSize=4, blocking=False)
+            self.q_nn = self.device.getOutputQueue("detections", maxSize=4, blocking=False) if self.has_nn else None
         except Exception as e:
-            print(f"Failed to initialize NN pipeline: {e}")
-            # Continue without NN if it fails
-            self.nn_device = None
-            self.q_nn = None
+            print(f"Failed to initialize device: {e}")
+            raise
         
         # Thread-safe state management
         self.lock = threading.Lock()
@@ -196,10 +179,8 @@ class OakClient:
         if hasattr(self, 'thread') and self.thread.is_alive():
             self.thread.join(timeout=1.0)
         try:
-            if hasattr(self, 'camera_device'):
-                self.camera_device.close()
-            if hasattr(self, 'nn_device') and self.nn_device is not None:
-                self.nn_device.close()
+            if hasattr(self, 'device'):
+                self.device.close()
         except Exception as e:
             print(f"Error closing device: {e}")
 

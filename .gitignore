@@ -1,3 +1,4 @@
 .env
 /tools/
 /venv_openvino/
+/models/YOLOv5/

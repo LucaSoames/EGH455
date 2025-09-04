@@ -1,0 +1,5 @@
+Looking in indexes: https://pypi.org/simple, https://www.piwheels.org/simple
+Collecting pybind11
+  Downloading https://www.piwheels.org/simple/pybind11/pybind11-3.0.1-py3-none-any.whl (293 kB)
+Installing collected packages: pybind11
+Successfully installed pybind11-3.0.1

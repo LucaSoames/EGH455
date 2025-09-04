@@ -25,6 +25,9 @@ requests>=2.31
 # Packaging utilities
 packaging>=24.0
 
+# Trash can support
+send2trash
+
 #########################################
 # Raspberry Pi sensor stack (Linux only) #
 #########################################

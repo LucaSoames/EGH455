@@ -1,0 +1,5 @@
+YOLOv11n_HubAI_simplified: 10.9 FPS, 91.7 ms/frame
+YOLOv11n_HubAI: 10.9 FPS, 91.7 ms/frame
+YOLOv11n: 10.9 FPS, 91.5 ms/frame
+YOLOv5s_2021.4_6SHAVES: 6.9 FPS, 144.8 ms/frame
+YOLOv11n_2021.4_6SHAVES: 12.9 FPS, 77.4 ms/frame

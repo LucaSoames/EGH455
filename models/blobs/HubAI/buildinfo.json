@@ -1,0 +1,44 @@
+{
+    "cmd_info": {
+        "model_optimizer": [
+            "mo",
+            "--output_dir",
+            "shared_with_container/outputs/YOLOv11n_to_rvc2_2025_09_04_00_31_45/intermediate_outputs",
+            "--output",
+            "output1_yolov6r2,output2_yolov6r2,output3_yolov6r2",
+            "--compress_to_fp16",
+            "--input",
+            "images[1 3 640 640]{f32}",
+            "--mean_values",
+            "images[0.0, 0.0, 0.0]",
+            "--scale_values",
+            "images[255.0, 255.0, 255.0]",
+            "--reverse_input_channels",
+            "--input_model",
+            "shared_with_container/outputs/YOLOv11n_to_rvc2_2025_09_04_00_31_45/intermediate_outputs/YOLOv11n-simplified.onnx"
+        ],
+        "compile_tool": [
+            "compile_tool",
+            "-d",
+            "MYRIAD",
+            "-ip",
+            "U8",
+            "-m",
+            "shared_with_container/outputs/YOLOv11n_to_rvc2_2025_09_04_00_31_45/intermediate_outputs/YOLOv11n-simplified.xml",
+            "-o",
+            "shared_with_container/outputs/YOLOv11n_to_rvc2_2025_09_04_00_31_45/YOLOv11n-rvc2.blob",
+            "-c",
+            "/tmp/tmp9j7ippbb.conf"
+        ]
+    },
+    "modelconverter_version": "0.4.2",
+    "model_optimizer_version": "2022.3.0-9052-9752fafe8eb-releases/2022/3",
+    "compile_tool_version": "2022.3.0",
+    "compile_tool_build": "2022.3.0-9213-bdadcd7583c-releases/2022/3",
+    "target_devices": [
+        "MYRIAD"
+    ],
+    "is_superblob": false,
+    "number_of_shaves": 6,
+    "number_of_cmx_slices": 6
+}

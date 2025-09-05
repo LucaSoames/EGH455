@@ -6,8 +6,15 @@ import os
 import json
 
 # TEST WITH A VIDEO OR IMAGE - uncomment the one you want to use
-# INPUT_PATH = "/home/pi/EGH455/models/testing/images/Gauge.mp4"
-# INPUT_PATH = "/home/pi/EGH455/models/testing/images/Gauge_far.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_blue.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_A.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_B.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_blue_A.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_blue_B.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_silver_A.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_silver_B.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_silver_C.mp4"
+
 INPUT_PATH = "/home/pi/EGH455/models/testing/images/Ball Valve Open Floor.jpg"
 # INPUT_PATH = "/home/pi/EGH455/models/testing/images/Ball Valve Open.png"
 
@@ -16,11 +23,11 @@ INPUT_PATH = "/home/pi/EGH455/models/testing/images/Ball Valve Open Floor.jpg"
 # CONFIG_PATH = "/home/pi/EGH455/models/blobs/HubAI/YOLOv11n.json"
 
 # Path to YOLOv8 blob file and config
-BLOB_PATH = "/home/pi/EGH455/models/blobs/Roboflow/YOLOv8.blob"
-CONFIG_PATH = "/home/pi/EGH455/models/blobs/Roboflow/YOLOv8.json"
+BLOB_PATH = "/home/pi/EGH455/models/blobs/YOLOv8s.blob"
+CONFIG_PATH = "/home/pi/EGH455/models/blobs/YOLOv8s.json"
 
 # Detection parameters - adjusted for better detection
-CONFIDENCE_THRESHOLD = 0.35  # Lowered to catch more potential detections
+CONFIDENCE_THRESHOLD = 0.25  # Lowered to catch more potential detections
 IOU_THRESHOLD = 0.01         # Standard NMS threshold
 MIN_BOX_AREA = 0.001         # Minimum box area (as fraction of image)
 MAX_BOX_AREA = 0.1           # Maximum box area (as fraction of image)
@@ -256,31 +263,50 @@ def draw_detections(frame, detections, class_names):
     cv2.putText(frame, f"Detections: {len(detections)}", (10, 30),
                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
+def parse_on_device_detections(nn_data, original_frame_shape):
+    """Parse detections from an on-device decoding model (e.g., Roboflow blob)."""
+    detections = []
+    h, w = original_frame_shape[:2]
+    for detection in nn_data.detections:
+        detections.append({
+            'x1': detection.xmin,
+            'y1': detection.ymin,
+            'x2': detection.xmax,
+            'y2': detection.ymax,
+            'confidence': detection.confidence,
+            'class_id': detection.label
+        })
+    return detections
+
 def process_output(nn_data, class_names, num_classes, original_frame):
     """Process network output and draw detections."""
     result_frame = original_frame.copy()
     
-    # Get all layer names and tensors
-    layers = nn_data.getAllLayers()
-    
-    # Process detections from each layer
-    all_detections = []
-    
-    for layer in layers:
-        # The layer shape is (1, channels, height, width)
-        # channels = num_classes + 5
-        # height and width are the grid size
-        grid_size = layer.dims[2]
+    # Check if the output is already decoded detections (from Roboflow/blobconverter)
+    if isinstance(nn_data, dai.ImgDetections):
+        filtered_detections = parse_on_device_detections(nn_data, original_frame.shape)
+    else: # Assume raw output that needs host-side decoding (from HubAI)
+        # Get all layer names and tensors
+        layers = nn_data.getAllLayers()
         
-        # Get layer data as a numpy array of FP16 values, and convert to FP32 for processing.
-        layer_data = np.array(nn_data.getLayerFp16(layer.name), dtype=np.float32)
+        # Process detections from each layer
+        all_detections = []
         
-        # Process this output layer
-        detections = process_yolo_output(layer_data, grid_size, num_classes)
-        all_detections.extend(detections)
-    
-    # Apply NMS to filter overlapping boxes
-    filtered_detections = non_max_suppression(all_detections, IOU_THRESHOLD)
+        for layer in layers:
+            # The layer shape is (1, channels, height, width)
+            # channels = num_classes + 5
+            # height and width are the grid size
+            grid_size = layer.dims[2]
+            
+            # Get layer data as a numpy array of FP16 values, and convert to FP32 for processing.
+            layer_data = np.array(nn_data.getLayerFp16(layer.name), dtype=np.float32)
+            
+            # Process this output layer
+            detections = process_yolo_output(layer_data, grid_size, num_classes)
+            all_detections.extend(detections)
+        
+        # Apply NMS to filter overlapping boxes
+        filtered_detections = non_max_suppression(all_detections, IOU_THRESHOLD)
     
     # Optional: Filter out detections with very high confidence if needed for debugging
     # high_conf_detections = [d for d in filtered_detections if d['confidence'] > 0.9]
@@ -291,39 +317,23 @@ def process_output(nn_data, class_names, num_classes, original_frame):
     
     return result_frame, filtered_detections
 
-def process_frame(frame, input_name, input_size, q_in, q_nn, class_names, num_classes):
-    """Process a single frame and return the detection results."""
-    # Preprocess image
-    img = preprocess_image(frame, input_size)
-    
-    # Create tensor
-    tensor = dai.NNData()
-    tensor.setLayer(input_name, img)
-    
-    # Send the tensor for inference
-    q_in.send(tensor)
-    
-    # Wait for inference results with timeout
+def get_nn_result_video(q_nn):
+    """Blocking call to get the NN result for video streams."""
+    nn_data = q_nn.get()
+    if nn_data is not None:
+        return nn_data
+    return None
+
+def get_nn_result_image(q_nn):
+    """Non-blocking call with timeout to get the NN result for single images."""
     start_time = time.time()
-    nn_data = None
-    
-    # Try to get results for up to 1 second
-    while time.time() - start_time < 1.0:
+    while time.time() - start_time < 2.0: # Increased timeout to 2s
         nn_data = q_nn.tryGet()
         if nn_data is not None:
-            break
-        time.sleep(0.01)  # Small delay
-    
-    if nn_data is not None:
-        # Process output
-        result_frame, detections = process_output(nn_data, class_names, num_classes, frame)
-        return result_frame, detections
-    else:
-        print("Warning: Inference timeout")
-        # Draw timeout message
-        cv2.putText(frame, "INFERENCE TIMEOUT", (50, 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        return frame, []
+            return nn_data
+        time.sleep(0.01)
+    print("Warning: Inference timeout on image")
+    return None
 
 def process_video(video_path, input_name, input_size, device, class_names, num_classes):
     """Process video file frame by frame."""
@@ -335,8 +345,8 @@ def process_video(video_path, input_name, input_size, device, class_names, num_c
     print(f"Processing video: {os.path.basename(video_path)}")
     
     # Create input/output queues
-    q_in = device.getInputQueue(input_name)
-    q_nn = device.getOutputQueue("nn", maxSize=4, blocking=False)
+    q_in = device.getInputQueue(input_name, maxSize=4, blocking=False)
+    q_nn = device.getOutputQueue("nn", maxSize=4, blocking=True)
     
     frame_count = 0
     start_time = time.time()
@@ -349,9 +359,23 @@ def process_video(video_path, input_name, input_size, device, class_names, num_c
         if not ret:
             break
         
-        # Process frame
-        result_frame, detections = process_frame(frame, input_name, input_size, q_in, q_nn, class_names, num_classes)
+        # Preprocess image and send for inference
+        img = preprocess_image(frame, input_size)
+        tensor = dai.NNData()
+        tensor.setLayer(input_name, img)
+        q_in.send(tensor)
         
+        # Get result from the queue (blocking)
+        nn_data = get_nn_result_video(q_nn)
+        
+        if nn_data:
+            result_frame, detections = process_output(nn_data, class_names, num_classes, frame)
+        else:
+            # If we get here, something is wrong with the queue
+            result_frame = frame
+            cv2.putText(result_frame, "No NN data", (50, 50), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
         # Calculate and display FPS
         frame_count += 1
         elapsed_time = time.time() - start_time
@@ -369,7 +393,8 @@ def process_video(video_path, input_name, input_size, device, class_names, num_c
     
     # Clean up
     cap.release()
-    print(f"Processed {frame_count} frames in {elapsed_time:.1f} seconds")
+    if frame_count > 0 and elapsed_time > 0:
+        print(f"Processed {frame_count} frames in {elapsed_time:.1f} seconds")
 
 def process_image(image_path, input_name, input_size, device, class_names, num_classes):
     """Process a single image file."""
@@ -385,9 +410,22 @@ def process_image(image_path, input_name, input_size, device, class_names, num_c
     q_in = device.getInputQueue(input_name)
     q_nn = device.getOutputQueue("nn", maxSize=4, blocking=False)
     
-    # Process frame
-    result_frame, detections = process_frame(frame, input_name, input_size, q_in, q_nn, class_names, num_classes)
-    
+    # Preprocess image and send for inference
+    img = preprocess_image(frame, input_size)
+    tensor = dai.NNData()
+    tensor.setLayer(input_name, img)
+    q_in.send(tensor)
+
+    # Get result from the queue (non-blocking with timeout)
+    nn_data = get_nn_result_image(q_nn)
+
+    if nn_data:
+        result_frame, detections = process_output(nn_data, class_names, num_classes, frame)
+    else:
+        result_frame = frame
+        cv2.putText(result_frame, "INFERENCE TIMEOUT", (50, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
     # Display result
     model_name = os.path.splitext(os.path.basename(BLOB_PATH))[0]
     cv2.imshow(f"{model_name} Detection", result_frame)

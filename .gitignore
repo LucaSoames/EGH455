@@ -1,4 +1,8 @@
 .env
 /tools/
 /venv_openvino/
+<<<<<<< HEAD
 /models/testing/videos
+=======
+/models/YOLOv5/
+>>>>>>> 51a3c39c8e193e416fb5adefd44d22e786819c94

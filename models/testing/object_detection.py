@@ -24,8 +24,8 @@ INPUT_PATH = "/home/pi/EGH455/models/testing/images/" # Iterate through images i
 
 # VIDEOS:
 # INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_blue.mp4"
-# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_A.mp4"
-# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_B.mp4"
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_A.mp4" # Needs a lot more training
+# INPUT_PATH = "/home/pi/EGH455/models/testing/videos/far_silver_B.mp4" # Needs a bit more training
 # INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_blue_A.mp4"
 # INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_blue_B.mp4"
 # INPUT_PATH = "/home/pi/EGH455/models/testing/videos/near_silver_A.mp4"
@@ -80,7 +80,7 @@ def draw_detections(frame, detections, class_names):
     """Draw detection boxes on the frame with proper text positioning."""
     color_map = {
         "Gauge_Centre": (255, 0, 0),    # Blue
-        "Needle_Tip": (0, 255, 255),    # Yellow (corrected from cyan)
+        "Needle_Tip": (0, 255, 255),    # Yellow
         "Valve_Open": (0, 255, 0),      # Green
         "Valve_Closed": (0, 0, 255),    # Red
     }
@@ -116,14 +116,17 @@ def draw_detections(frame, detections, class_names):
         if text_y - text_height < 0:
             text_y = bbox[1] + text_height + 10
         
-        # Draw background rectangle for text (optional, for better readability)
-        cv2.rectangle(frame, 
-                     (text_x - 5, text_y - text_height - 5), 
-                     (text_x + text_width + 5, text_y + baseline + 5), 
-                     (0, 0, 0), 
-                     -1)  # Filled black rectangle
+        # Calculate proper background rectangle dimensions
+        padding = 3  # Reduced padding
+        bg_x1 = text_x - padding
+        bg_y1 = text_y - text_height - padding
+        bg_x2 = text_x + text_width + padding
+        bg_y2 = text_y + baseline + padding
         
-        # Draw the text
+        # Draw background rectangle for text (properly sized)
+        cv2.rectangle(frame, (bg_x1, bg_y1), (bg_x2, bg_y2), (0, 0, 0), -1)
+        
+        # Draw the text centred in the background rectangle
         cv2.putText(frame, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
     
     # Draw detection count with larger font

@@ -1,229 +1,81 @@
+# /home/pi/EGH455/TAIP/config.py
+
 """
-Configuration file for the TAIP (Target Acquisition and Image Processing) subsystem.
-Contains all constants and configuration variables for the EGH455 UAVPayloadTAQ project.
+Configuration File for the EGH455 TAIP Subsystem
+
+This file contains all the static configuration variables for the project,
+including model paths, network settings, GPIO pins, and vision processing
+calibration values. Centralizing these values makes the application easier
+to manage, test, and deploy.
 """
 
+import cv2
+import numpy as np
 import os
-from pathlib import Path
 
-# =============================================================================
-# SYSTEM PATHS
-# =============================================================================
-# Base project directory (TAIP folder is now the working directory)
-PROJECT_ROOT = Path("/home/pi/EGH455")
-TAIP_ROOT = Path("/home/pi/EGH455/TAIP")
+# --- GCS (Ground Control Station) Communication ---
+# The IP address of the laptop running the ground_station_server.py
+# It's recommended to set this as an environment variable for flexibility.
+GCS_LAPTOP_IP = os.environ.get("GCS_LAPTOP_IP", "192.168.1.100")
+GCS_URL = f"http://{GCS_LAPTOP_IP}:5000"
+POST_FRAME_FPS: int = 10  # Max frames per second to send to GCS
+POST_TELEM_HZ: int = 5    # Max telemetry packets per second to send
 
-# Model paths
-MODEL_BLOB_PATH = PROJECT_ROOT / "models" / "blobs" / "YOLOv8s.blob"
-MODEL_CONFIG_PATH = PROJECT_ROOT / "models" / "blobs" / "YOLOv8s.json"
+# --- AI Model Configuration ---
+MODEL_DIR = "/home/pi/EGH455/models/blobs/"
+# The name of the model files (without extension).
+# This allows for easy switching between different trained models.
+BLOB_NAME = "YOLOv8s"
+BLOB_PATH = os.path.join(MODEL_DIR, f"{BLOB_NAME}.blob")
+CONFIG_PATH = os.path.join(MODEL_DIR, f"{BLOB_NAME}.json")
 
+# --- GPIO Configuration ---
+# The BCM pin number that will send a HIGH signal to the Drilling & Enclosure subsystem.
+DRILL_GPIO_PIN: int = 17
 
-# =============================================================================
-# CAMERA CONFIGURATION
-# =============================================================================
-# OAK-D Lite camera settings
-CAMERA_PREVIEW_SIZE = (640, 640)  # Size for YOLO input
-CAMERA_FPS = 30
-CAMERA_QUEUE_SIZE = 4
+# --- Vision Processing Calibration ---
 
-# Video encoding settings for GCS transmission
-VIDEO_QUALITY = 70  # JPEG quality (0-100)
-VIDEO_MAX_WIDTH = 640
-VIDEO_MAX_HEIGHT = 480
+# Gauge Reading Calibration
+# Angle of the needle at the minimum and maximum pressure readings.
+# 0 degrees is horizontal-right, positive is counter-clockwise.
+# Refactored from drone_client.py and Roboflow blog.
+GAUGE_MIN_ANGLE_DEG: float = 225.0  # Angle for min pressure (e.g., 0 bar)
+GAUGE_MAX_ANGLE_DEG: float = -45.0  # Angle for max pressure (e.g., 10 bar)
+GAUGE_MIN_PRESSURE_BAR: float = 0.0
+GAUGE_MAX_PRESSURE_BAR: float = 10.0
+DRILL_THRESHOLD_BAR: float = 2.0  # Pressure threshold to trigger drill signal
 
-# =============================================================================
-# TEST MODE CONFIGURATION
-# =============================================================================
-# Set TEST_INPUT_PATH to enable test mode instead of live camera
-# Simply comment/uncomment the line you want to use:
+# ArUco Marker Configuration
+# The dictionary should match the markers used in the environment.
+ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_200)
+# Physical size of the ArUco marker in meters. Required for accurate pose estimation.
+ARUCO_MARKER_SIZE_M: float = 0.20 # As per project spec: "exactly 200x200mm"
 
-# Live camera mode (default)
-TEST_INPUT_PATH = None
-
-# Test with all images in folder
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/images"
-
-# Test with specific videos (uncomment one to use)
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_silver_A.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_B.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_silver_A.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_silver_B.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_silver_C.mp4"
-
-# Test mode display settings
-TEST_MODE_WINDOW_NAME = "TAIP Detection Test"
-TEST_MODE_DISPLAY_TIME = 1000  # ms to display each image (0 = wait for keypress)
-TEST_MODE_AUTO_ADVANCE = False  # True = auto advance, False = manual (press key)
-
-# =============================================================================
-# YOLO MODEL CONFIGURATION
-# =============================================================================
-# Detection thresholds
-CONFIDENCE_THRESHOLD = 0.5
-IOU_THRESHOLD = 0.01
-
-# Expected YOLO classes for the pressure gauge system (from YOLOv8s.json)
-YOLO_CLASSES = {
-    'Gauge_Centre': 0,
-    'Needle_Tip': 1,
-    'Valve_Closed': 2,
-    'Valve_Open': 3
-}
-
-# =============================================================================
-# GAUGE CALIBRATION
-# =============================================================================
-# Pressure gauge calibration parameters
-# Angle range: -45° to 225° (270° total range)
-# Pressure range: 10 to 0 bar (decreasing with clockwise rotation)
-GAUGE_MIN_ANGLE = -45.0      # degrees (10 bar position)
-GAUGE_MAX_ANGLE = 225.0      # degrees (0 bar position)
-GAUGE_MIN_PRESSURE = 0.0     # bar (at max angle)
-GAUGE_MAX_PRESSURE = 10.0    # bar (at min angle)
-
-# Drilling threshold
-DRILL_PRESSURE_THRESHOLD = 2.0  # bar - below this triggers drilling
-
-# =============================================================================
-# GPIO CONFIGURATION
-# =============================================================================
-# GPIO pin assignments
-DRILL_TRIGGER_PIN = 18  # GPIO pin to send HIGH signal to DE subsystem
-GPIO_MODE = "BCM"       # Use BCM pin numbering
-
-# =============================================================================
-# ARUCO MARKER CONFIGURATION
-# =============================================================================
-# ArUco detection settings
-ARUCO_DICT = "DICT_4X4_250"  # Dictionary type
-ARUCO_MARKER_SIZE = 0.05     # Marker size in meters (5cm)
-
-# TODO: Camera calibration matrix for ArUco pose prediction (REQUIRES CALIBRATION)
-CAMERA_MATRIX = [
-    [640.0, 0.0, 320.0],
-    [0.0, 640.0, 240.0],
+# --- Camera Intrinsics (IMPORTANT: CALIBRATE YOUR CAMERA) ---
+# These are placeholder values. You MUST replace them with the actual calibration
+# results for your specific OAK-D Lite camera to get accurate ArUco pose estimation.
+#
+# HOW TO CALIBRATE:
+# 1. Print a chessboard pattern (e.g., 9x6 squares). You can find patterns online.
+# 2. Using a script, capture 15-20 images of the chessboard from your OAK-D Lite
+#    at various angles and distances.
+# 3. Use OpenCV's `cv2.findChessboardCorners()` and `cv2.calibrateCamera()` functions
+#    with these images to compute the camera matrix and distortion coefficients.
+# 4. For a detailed guide, follow the official OpenCV tutorial:
+#    https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+#
+CAMERA_MATRIX = np.array([
+    [800.0, 0.0, 320.0],
+    [0.0, 800.0, 320.0],
     [0.0, 0.0, 1.0]
-]
+], dtype=np.float32)
 
-DISTORTION_COEFFICIENTS = [0.0, 0.0, 0.0, 0.0, 0.0]
+DIST_COEFFS = np.zeros((5, 1), dtype=np.float32)  # Assuming no/minimal lens distortion for this application
 
-# =============================================================================
-# ENVIRO+ HAT CONFIGURATION
-# =============================================================================
-# LCD display settings
-LCD_WIDTH = 160
-LCD_HEIGHT = 80
-LCD_ROTATION = 90
-
-# Display modes for proximity sensor
-DISPLAY_MODES = {
-    'ip_address': 0,
-    'live_feed': 1,
-    'sensor_data': 2,
-    'system_status': 3
-}
-
-# Proximity sensor thresholds for mode switching
-PROXIMITY_THRESHOLD_NEAR = 1000   # Raw sensor value
-PROXIMITY_THRESHOLD_FAR = 2000    # Raw sensor value
-
-# Environmental sensor update intervals (seconds)
-SENSOR_UPDATE_INTERVAL = 1.0
-ENVIRONMENTAL_UPDATE_INTERVAL = 1.0  # How often to read environmental sensors
-
-# =============================================================================
-# NETWORK CONFIGURATION
-# =============================================================================
-# Ground Control Station (GCS) settings
-GCS_BASE_URL = "http://192.168.1.100:5000"  # Default GCS IP and port
-GCS_TELEMETRY_ENDPOINT = "/telemetry"
-GCS_FRAME_ENDPOINT = "/frame"
-
-# Network timeouts
-REQUEST_TIMEOUT = 2.0  # seconds
-CONNECTION_TIMEOUT = 1.0  # seconds
-
-# Data transmission settings
-MAX_RETRIES = 3
-RETRY_DELAY = 0.5  # seconds between retries
-
-# =============================================================================
-# SYSTEM TIMING
-# =============================================================================
-# Main loop timing
-MAIN_LOOP_RATE = 10.0  # Hz (10 FPS for main processing)
-FRAME_INTERVAL = 1.0 / MAIN_LOOP_RATE
-
-# Performance requirements
-MAX_PROCESSING_TIME = 0.4  # seconds (within 4-second requirement)
-
-# =============================================================================
-# LOGGING CONFIGURATION
-# =============================================================================
-# Log levels and formatting
-LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-LOG_FILE = TAIP_ROOT / "logs" / "taip_system.log"
-
-# Create logs directory if it doesn't exist
-LOG_FILE.parent.mkdir(exist_ok=True)
-
-# =============================================================================
-# DEVELOPMENT/DEBUG SETTINGS
-# =============================================================================
-# Debug flags
-DEBUG_MODE = False
-SAVE_DEBUG_IMAGES = False
-DEBUG_IMAGE_PATH = TAIP_ROOT / "debug_images"
-
-# Visualization settings
-DRAW_BOUNDING_BOXES = True
-DRAW_ARUCO_MARKERS = True
-BBOX_COLOR = (0, 255, 0)  # Green for bounding boxes
-BBOX_THICKNESS = 2
-TEXT_COLOR = (255, 255, 255)  # White for text
-TEXT_SCALE = 2.0
-
-# =============================================================================
-# VALIDATION FUNCTIONS
-# =============================================================================
-def validate_config():
-    """Validate configuration settings and file paths."""
-    errors = []
-    
-    # Check if model files exist
-    if not MODEL_BLOB_PATH.exists():
-        errors.append(f"Blob file not found")
-    
-    # Validate angle ranges
-    if GAUGE_MIN_ANGLE >= GAUGE_MAX_ANGLE:
-        errors.append("GAUGE_MIN_ANGLE must be less than GAUGE_MAX_ANGLE")
-    
-    # Validate pressure ranges
-    if GAUGE_MIN_PRESSURE >= GAUGE_MAX_PRESSURE:
-        errors.append("GAUGE_MIN_PRESSURE must be less than GAUGE_MAX_PRESSURE")
-    
-    # Validate thresholds
-    if not (0.0 <= CONFIDENCE_THRESHOLD <= 1.0):
-        errors.append("CONFIDENCE_THRESHOLD must be between 0.0 and 1.0")
-    
-    if not (0.0 <= IOU_THRESHOLD <= 1.0):
-        errors.append("IOU_THRESHOLD must be between 0.0 and 1.0")
-    
-    # Validate network settings
-    if REQUEST_TIMEOUT <= 0:
-        errors.append("REQUEST_TIMEOUT must be positive")
-    
-    if MAX_RETRIES < 0:
-        errors.append("MAX_RETRIES must be non-negative")
-    
-    if errors:
-        raise ValueError(f"Configuration validation failed:\n" + "\n".join(errors))
-    
-    return True
-
-# Auto-validate configuration on import
-if __name__ != "__main__":
-    validate_config()
+# --- Development & Testing Configuration ---
+# Set to a path to a directory of images, a single image file, or a video file
+# to run in testing mode. Set to None to use the live OAK-D camera feed.
+# This logic is refactored from your object_detection.py prototype.
+# Example: "/home/pi/EGH455/testing/images/"
+# Example: "/home/pi/EGH455/testing/videos/near_blue_A.mp4"
+INPUT_PATH: str | None = None

@@ -28,6 +28,10 @@ class FileProcessor:
             ])
             print(f"Loaded {len(self.image_files)} images from {self.input_path.name}")
     
+    @property
+    def is_video(self) -> bool:
+        return self.cap is not None
+    
     def get_next_frame(self) -> Optional[np.ndarray]:
         """Get next frame from video or next image."""
         if self.cap:

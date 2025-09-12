@@ -21,8 +21,10 @@ from pathlib import Path
 import config
 from data_models import PayloadData, YoloDetection, ArucoDetection, EnvironmentalData
 from oak_camera import OakCamera
-from vision_processing import (calculate_gauge_reading, detect_aruco_markers, 
-                              FileInferenceProcessor, show_inference_visualisation)
+from vision_processing import (calculate_gauge_reading,
+                               detect_aruco_markers,
+                               show_inference_visualisation)
+from file_inference import FileInferenceProcessor  # FIX: moved here
 from gcs_client import GCSClient
 from file_processor import FileProcessor
 
@@ -110,46 +112,50 @@ class LCDDisplay:
             self.current_mode = (self.current_mode + 1) % 3
             self.last_tap_time = now
     
-    def update_display(self, ip_address: str, frame: np.ndarray, 
-                      detections: List[YoloDetection], env_data: Optional[EnvironmentalData],
-                      is_file_mode: bool):
-        """Update the LCD display content."""
+    def update_display(self, ip_address: str, frame, detections,
+                       env_data, gauge_pressure, is_file_mode: bool):
+        """
+        Update LCD content.
+        gauge_pressure may be None.
+        """
         if not self.lcd:
             return
-        
         try:
-            # Clear display
             self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height), (0, 0, 0))
-            
-            if self.current_mode == 0:  # IP Address mode
-                self.draw.text((5, 5), "IP Address:", fill=(255, 255, 0), font=self.font)
-                self.draw.text((5, 25), ip_address, fill=(255, 255, 255), font=self.font)
-                mode_text = "File Mode" if is_file_mode else "Live Mode"
-                self.draw.text((5, 45), mode_text, fill=(0, 255, 255), font=self.font)
-            
-            elif self.current_mode == 1:  # Live Feed mode
+
+            if self.current_mode == 0:
+                self.draw.text((5, 5), "IP:", fill=(255, 255, 0), font=self.font)
+                self.draw.text((5, 23), ip_address, fill=(255, 255, 255), font=self.font)
+                mode_text = "File" if is_file_mode else "Live"
+                self.draw.text((5, 41), f"Mode: {mode_text}", fill=(0, 255, 255), font=self.font)
+                if gauge_pressure is not None:
+                    self.draw.text((5, 59), f"P:{gauge_pressure:.2f} bar",
+                                   fill=(0, 255, 0), font=self.font)
+
+            elif self.current_mode == 1 and frame is not None:
                 img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 img_pil = img_pil.resize((self.lcd.width, self.lcd.height))
-                draw_on_resized = ImageDraw.Draw(img_pil)
+                d2 = ImageDraw.Draw(img_pil)
                 for det in detections:
-                    box = [int(c * dim) for c, dim in zip(det.box, 
-                          [self.lcd.width, self.lcd.height, self.lcd.width, self.lcd.height])]
-                    draw_on_resized.rectangle(box, outline="lime", width=1)
+                    x1 = int(det.box[0] * self.lcd.width)
+                    y1 = int(det.box[1] * self.lcd.height)
+                    x2 = int(det.box[2] * self.lcd.width)
+                    y2 = int(det.box[3] * self.lcd.height)
+                    d2.rectangle((x1, y1, x2, y2), outline="lime", width=1)
+                if gauge_pressure is not None:
+                    d2.text((2, 2), f"{gauge_pressure:.1f} bar",
+                            fill=(255, 255, 0), font=self.font)
                 self.image.paste(img_pil)
-            
-            elif self.current_mode == 2 and env_data:  # Sensor Data mode
-                self.draw.text((5, 5), f"Temp: {env_data.temperature_c:.1f} C", 
-                              fill=(255, 255, 255), font=self.font)
-                self.draw.text((5, 25), f"Pres: {env_data.pressure_hpa:.1f} hPa", 
-                              fill=(255, 255, 255), font=self.font)
-                self.draw.text((5, 45), f"Humid: {env_data.humidity_rh:.1f} %", 
-                              fill=(255, 255, 255), font=self.font)
-                self.draw.text((5, 65), f"Light: {env_data.light_lux:.1f} Lux", 
-                              fill=(255, 255, 255), font=self.font)
-                
-            # Display the composed image
+
+            elif self.current_mode == 2 and env_data:
+                self.draw.text((2, 2),  f"T {env_data.temperature_c:.1f}C", fill=(255,255,255), font=self.font)
+                self.draw.text((2, 20), f"P {env_data.pressure_hpa:.0f}hPa", fill=(255,255,255), font=self.font)
+                self.draw.text((2, 38), f"H {env_data.humidity_rh:.0f}%", fill=(255,255,255), font=self.font)
+                self.draw.text((2, 56), f"L {env_data.light_lux:.0f}lx", fill=(255,255,255), font=self.font)
+                if gauge_pressure is not None:
+                    self.draw.text((2, 74), f"G {gauge_pressure:.1f}b", fill=(0,255,0), font=self.font)
+
             self.lcd.display(self.image)
-            
         except Exception as e:
             print(f"LCD update error: {e}")
     
@@ -182,7 +188,8 @@ class DrillController:
             if self.gpio_available:
                 GPIO.output(config.DRILL_GPIO_PIN, GPIO.HIGH if should_activate else GPIO.LOW)
                 status = "ACTIVATED" if should_activate else "DEACTIVATED"
-                print(f"DRILL {status} - Pressure: {gauge_reading:.2f if gauge_reading else 'N/A'} bar")
+                pressure_txt = f"{gauge_reading:.2f}" if gauge_reading is not None else "N/A"
+                print(f"DRILL {status} - Pressure: {pressure_txt} bar")
     
     def close(self):
         """Clean up GPIO."""
@@ -241,50 +248,52 @@ class MainApp:
         print("Starting main processing loop...")
         
         while self.running:
-            # Get frame and detections from current input source
             rgb_frame, mono_frame, yolo_detections = self._get_frame_and_detections()
-            
             if rgb_frame is None:
-                if self.file_processor:  # End of files
+                if self.file_processor:
                     print(f"File processing completed. Processed {frame_count} frames.")
                     break
                 time.sleep(0.01)
                 continue
-            
+
+            if mono_frame is None:
+                mono_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2GRAY)
+
             frame_count += 1
-            
-            # Run vision processing
-            aruco_detections = detect_aruco_markers(mono_frame, config.CAMERA_MATRIX, config.DIST_COEFFS)
+
+            # ArUco detection (isolated to avoid fatal loop errors)
+            try:
+                aruco_detections = detect_aruco_markers(
+                    mono_frame, config.CAMERA_MATRIX, config.DIST_COEFFS
+                )
+            except Exception as e:
+                print(f"ArUco error: {e}")
+                aruco_detections = []
+
             gauge_reading = calculate_gauge_reading(yolo_detections)
             env_data = self.env_sensors.get_readings()
-            
-            # Control drill based on pressure
             self.drill_controller.control_drill(gauge_reading)
-            
-            # Handle GCS communication
-            self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections, 
-                                         gauge_reading, env_data)
-            
-            # Update LCD display
+            self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections,
+                                           gauge_reading, env_data)
+
             proximity = self.env_sensors.get_proximity()
             self.lcd_display.update_mode(proximity)
-            self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections, 
-                                          env_data, gauge_reading, bool(self.file_processor))
-            
-            # File mode visualisation
+            self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections,
+                                            env_data, gauge_reading, bool(self.file_processor))
+
             if self.file_processor:
-                key = show_inference_visualisation(rgb_frame, yolo_detections, 
-                                                 aruco_detections, gauge_reading)
+                key = show_inference_visualisation(rgb_frame, yolo_detections,
+                                                   aruco_detections, gauge_reading)
                 if key == ord('q'):
                     print("Quit requested by user")
                     break
                 elif key == ord('s'):
                     self._save_debug_frame(rgb_frame, yolo_detections, frame_count)
-                
-                if frame_count % 10 == 0:
-                    print(f"Frame {frame_count}: {len(yolo_detections)} detections, "
-                          f"pressure: {gauge_reading:.2f if gauge_reading else 'N/A'} bar")
-            
+                # 'n' or any key (except handled above) just advances when manual mode
+                if frame_count % 5 == 0:
+                    pressure_txt = f"{gauge_reading:.2f}" if gauge_reading is not None else "N/A"
+                    print(f"Frame {frame_count}: {len(yolo_detections)} detections, pressure: {pressure_txt} bar")
+
             time.sleep(0.01)
 
     def _get_frame_and_detections(self):
@@ -347,25 +356,22 @@ class MainApp:
         """Clean up all resources."""
         print("Shutting down TAIP Subsystem...")
         self.running = False
-        
-        # Close input sources
-        if self.camera: 
+        if self.camera:
             self.camera.close()
         if self.file_processor:
             self.file_processor.close()
         if self.file_inference:
             self.file_inference.close()
-            
-        # Close other components
-        if self.gcs_client: 
+        if self.gcs_client:
             self.gcs_client.shutdown()
         if self.lcd_display:
             self.lcd_display.close()
         if self.drill_controller:
             self.drill_controller.close()
-            
-        # Close any OpenCV windows
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
         print("Shutdown complete.")
 
 

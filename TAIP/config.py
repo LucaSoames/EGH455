@@ -84,3 +84,22 @@ DIST_COEFFS = np.zeros((5, 1), dtype=np.float32)
 TEST_MODE_WINDOW_NAME = "TAIP Test Mode"
 TEST_MODE_DISPLAY_TIME = 100  # ms
 TEST_MODE_AUTO_ADVANCE = False
+
+def validate_config():
+    """Basic configuration validation for test scripts."""
+    errors = []
+    if not BLOB_PATH.exists():
+        errors.append(f"Model blob missing: {BLOB_PATH}")
+    if not CONFIG_PATH.exists():
+        errors.append(f"Model config JSON missing: {CONFIG_PATH}")
+    if GAUGE_MIN_PRESSURE_BAR >= GAUGE_MAX_PRESSURE_BAR:
+        errors.append("Gauge pressure range invalid")
+    if DRILL_PRESSURE_THRESHOLD < 0 or DRILL_PRESSURE_THRESHOLD > GAUGE_MAX_PRESSURE_BAR:
+        errors.append("Drill pressure threshold out of range")
+    if errors:
+        print("Configuration issues:")
+        for e in errors:
+            print(" -", e)
+        return False
+    print("✓ Configuration valid")
+    return True

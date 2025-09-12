@@ -11,31 +11,20 @@ ArUco marker poses.
 import cv2
 import numpy as np
 import math
-import json
-import depthai as dai
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-# Import our custom data models and configuration
 import config
 from data_models import YoloDetection, ArucoDetection
 
-# Initialise the ArUco detector once as a module-level object for efficiency
-_aruco_detector = cv2.aruco.ArucoDetector(config.ARUCO_DICT)
+# Create ArUco dictionary and detector with default parameters
+_aruco_params = cv2.aruco.DetectorParameters()
+_aruco_detector = cv2.aruco.ArucoDetector(config.ARUCO_DICT, _aruco_params)
 
 def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
     """
-    Calculates the pressure from a gauge based on YOLO detections.
-
-    This function finds the center of the 'Gauge_Centre' and 'Needle_Tip'
-    bounding boxes, calculates the angle of the needle, and maps this
-    angle to a pressure value using pre-defined calibration constants.
-
-    Args:
-        detections: A list of YoloDetection objects for a single frame.
-
-    Returns:
-        The calculated pressure in bar as a float, or None if the required
-        markers are not found.
+    Derive gauge pressure from needle + centre detections.
+    Expects relative (0..1) bounding boxes; angular maths is scale independent.
+    Returns pressure in bar or None if required detections missing.
     """
     # Find the highest confidence needle tip and gauge center
     needle_tip = max([d for d in detections if d.class_name == 'Needle_Tip'], 
@@ -78,89 +67,99 @@ def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
     return pressure
 
 def detect_aruco_markers(
-    frame: np.ndarray, 
-    camera_matrix: np.ndarray, 
+    frame: np.ndarray,
+    camera_matrix: np.ndarray,
     dist_coeffs: np.ndarray
 ) -> List[ArucoDetection]:
     """
-    Detects ArUco markers in a frame and estimates their pose.
+    Detect ArUco markers and estimate pose.
+    Falls back to manual solvePnP if cv2.aruco.estimatePoseSingleMarkers
+    is not available in the installed OpenCV build.
+    """
+    if frame is None:
+        return []
 
-    Args:
-        frame: The input video frame (as a NumPy array).
-        camera_matrix: The camera's intrinsic calibration matrix.
-        dist_coeffs: The camera's distortion coefficients.
+    if frame.ndim == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame
 
-    Returns:
-        A list of ArucoDetection objects, one for each marker found.
-    """    
-    # Detect markers
-    corners, ids, _ = _aruco_detector.detectMarkers(frame)
+    corners, ids, _ = _aruco_detector.detectMarkers(gray)
+    detections: List[ArucoDetection] = []
+    if ids is None or len(ids) == 0:
+        return detections
 
-    detected_markers: List[ArucoDetection] = []
-    if ids is not None and len(ids) > 0:
-        # Pose estimation requires float32 corners
-        corners_float = [c.astype(np.float32) for c in corners]
-        # Estimate pose for each detected marker
-        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-            corners_float, 
-            config.ARUCO_MARKER_SIZE_M, 
-            camera_matrix, 
-            dist_coeffs
-        )
+    # Marker 3D corner coordinates (centre at origin, Z=0 plane)
+    s = float(config.ARUCO_MARKER_SIZE_M)
+    obj_pts = np.array([
+        [-s/2,  s/2, 0],
+        [ s/2,  s/2, 0],
+        [ s/2, -s/2, 0],
+        [-s/2, -s/2, 0],
+    ], dtype=np.float32)
 
-        # Populate the list of detected markers
-        for i, marker_id in enumerate(ids):
-            detected_markers.append(
+    has_builtin = hasattr(cv2.aruco, "estimatePoseSingleMarkers")
+
+    for i, marker_id in enumerate(ids):
+        c = corners[i].astype(np.float32).reshape(-1, 2)
+
+        try:
+            if has_builtin:
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    [c], s, camera_matrix, dist_coeffs
+                )
+                rvec = rvecs[0][0]
+                tvec = tvecs[0][0]
+            else:
+                # Manual PnP
+                # Order: must match obj_pts ordering (OpenCV corner order is TL, TR, BR, BL)
+                ok, rvec, tvec = cv2.solvePnP(
+                    obj_pts,
+                    c,
+                    camera_matrix,
+                    dist_coeffs,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE
+                    if hasattr(cv2, "SOLVEPNP_IPPE_SQUARE") else cv2.SOLVEPNP_ITERATIVE
+                )
+                if not ok:
+                    continue
+            detections.append(
                 ArucoDetection(
                     marker_id=int(marker_id[0]),
-                    position=tuple(tvecs[i][0]),
-                    orientation=tuple(rvecs[i][0])
+                    position=tuple(map(float, tvec)),
+                    orientation=tuple(map(float, rvec))
                 )
             )
-            
-    return detected_markers
+        except Exception:
+            continue
 
-def draw_detections_on_frame(frame: np.ndarray, 
-                           detections: List[YoloDetection], 
-                           aruco_markers: List[ArucoDetection]) -> np.ndarray:
+    return detections
+
+def draw_detections_on_frame(frame: np.ndarray,
+                             detections: List[YoloDetection],
+                             aruco_markers: List[ArucoDetection]) -> np.ndarray:
     """
-    Draw detection results on a frame for visualization.
-    
-    Args:
-        frame: Input frame
-        detections: YOLO detections to draw
-        aruco_markers: ArUco markers to draw
-        
-    Returns:
-        Frame with detections drawn
+    Visual overlay for debugging. Bounding boxes assume relative coords [0,1].
     """
-    result_frame = frame.copy()
-    
-    # Draw YOLO detections
-    for detection in detections:
-        # Convert relative coordinates to absolute
-        h, w = frame.shape[:2]
-        x1 = int(detection.box[0] * w)
-        y1 = int(detection.box[1] * h)
-        x2 = int(detection.box[2] * w)
-        y2 = int(detection.box[3] * h)
-        
-        # Draw bounding box
-        color = (0, 255, 0) if detection.class_name in ['Gauge_Centre', 'Needle_Tip'] else (255, 0, 0)
-        cv2.rectangle(result_frame, (x1, y1), (x2, y2), color, 2)
-        
-        # Draw label
-        label = f"{detection.class_name}: {detection.confidence:.2f}"
-        cv2.putText(result_frame, label, (x1, y1 - 10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-    
-    # Draw ArUco markers
-    for marker in aruco_markers:
-        # Draw marker ID
-        cv2.putText(result_frame, f"ArUco {marker.marker_id}", 
-                   (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-    
-    return result_frame
+    out = frame.copy()
+    h, w = frame.shape[:2]
+
+    for det in detections:
+        x1 = int(det.box[0] * w)
+        y1 = int(det.box[1] * h)
+        x2 = int(det.box[2] * w)
+        y2 = int(det.box[3] * h)
+        colour = (0, 255, 0) if det.class_name in ('Gauge_Centre', 'Needle_Tip') else (255, 0, 0)
+        cv2.rectangle(out, (x1, y1), (x2, y2), colour, 2)
+        cv2.putText(out, f"{det.class_name}:{det.confidence:.2f}",
+                    (x1, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, colour, 1, cv2.LINE_AA)
+
+    for idx, marker in enumerate(aruco_markers):
+        text = f"ID {marker.marker_id}"
+        cv2.putText(out, text,
+                    (10, 20 + idx * 18), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55, (0, 255, 255), 1, cv2.LINE_AA)
+    return out
 
 def validate_gauge_calibration() -> bool:
     """Validate gauge calibration parameters."""
@@ -185,19 +184,14 @@ def validate_gauge_calibration() -> bool:
         return False
 
 def show_inference_visualisation(frame, detections, aruco_markers, gauge_pressure):
-    """Show visualisation window for file mode."""
+    """Show visualisation window for file mode (blocks if TEST_MODE_AUTO_ADVANCE=False)."""
     display_frame = draw_detections_on_frame(frame, detections, aruco_markers)
-    
-    # Add gauge reading overlay
     if gauge_pressure is not None:
-        cv2.putText(display_frame, f"Pressure: {gauge_pressure:.2f} bar", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    
-    # Add detection count
-    cv2.putText(display_frame, f"Detections: {len(detections)}", 
-               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    
-    # Show frame
+        cv2.putText(display_frame, f"Pressure: {gauge_pressure:.2f} bar",
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(display_frame, f"Detections: {len(detections)}",
+                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
     cv2.imshow("TAIP File Mode Visualisation", display_frame)
-    key = cv2.waitKey(config.TEST_MODE_DISPLAY_TIME) & 0xFF
+    wait_ms = 0 if not config.TEST_MODE_AUTO_ADVANCE else config.TEST_MODE_DISPLAY_TIME
+    key = cv2.waitKey(wait_ms) & 0xFF
     return key

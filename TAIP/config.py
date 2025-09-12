@@ -47,7 +47,7 @@ DRILL_THRESHOLD_BAR: float = 2.0  # Pressure threshold to trigger drill signal
 
 # ArUco Marker Configuration
 # The dictionary should match the markers used in the environment.
-ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_200)
+ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 # Physical size of the ArUco marker in meters. Required for accurate pose estimation.
 ARUCO_MARKER_SIZE_M: float = 0.20 # As per project spec: "exactly 200x200mm"
 

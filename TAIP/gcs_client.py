@@ -12,6 +12,7 @@ import requests
 import cv2
 import json
 import time
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Optional, Any
@@ -24,7 +25,7 @@ class GCSClient:
 
     def __init__(self, max_workers: int = 2):
         """
-        Initializes the GCS client.
+        Initialises the GCS client.
 
         Args:
             max_workers: The number of background threads for network requests.
@@ -38,7 +39,7 @@ class GCSClient:
         
         # A thread pool to execute network requests asynchronously
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        print(f"GCS Client initialized for server at {self.base_url}")
+        print(f"GCS Client initialised for server at {self.base_url}")
 
     def _send_post_request(self, url: str, **kwargs: Any) -> None:
         """Helper function to send a POST request and handle exceptions."""

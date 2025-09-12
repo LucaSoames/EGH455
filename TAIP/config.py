@@ -11,71 +11,70 @@ to manage, test, and deploy.
 
 import cv2
 import numpy as np
-import os
+from pathlib import Path
+
+# --- Project Structure ---
+PROJECT_ROOT = Path("/home/pi/EGH455")
+TAIP_ROOT = PROJECT_ROOT / "TAIP"
+
+# --- Mode Configuration ---
+# Set to None to use the live OAK-D camera feed.
+# Set path to a directory of images or a video file to run in testing mode.
+
+# Production (live camera feed)
+# INPUT_PATH = None
+
+# Testing (images)
+INPUT_PATH = PROJECT_ROOT / "models/testing/images"
+
+# Testing (video)
+# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
+
+# --- Camera Configuration ---
+CAMERA_PREVIEW_SIZE = (640, 640)
+CONFIDENCE_THRESHOLD = 0.5
+IOU_THRESHOLD = 0.5
+
+# --- Model Configuration ---
+MODEL_DIR = PROJECT_ROOT / "models/blobs"
+BLOB_NAME = "YOLOv8s"
+BLOB_PATH = MODEL_DIR / f"{BLOB_NAME}.blob"
+CONFIG_PATH = MODEL_DIR / f"{BLOB_NAME}.json"
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
-# It's recommended to set this as an environment variable for flexibility.
-GCS_LAPTOP_IP = os.environ.get("GCS_LAPTOP_IP", "192.168.1.100")
+# GCS_LAPTOP_IP = "192.168.1.100"
+GCS_LAPTOP_IP = "127.0.0.1"
 GCS_URL = f"http://{GCS_LAPTOP_IP}:5000"
-POST_FRAME_FPS: int = 10  # Max frames per second to send to GCS
-POST_TELEM_HZ: int = 5    # Max telemetry packets per second to send
-
-# --- AI Model Configuration ---
-MODEL_DIR = "/home/pi/EGH455/models/blobs/"
-# The name of the model files (without extension).
-# This allows for easy switching between different trained models.
-BLOB_NAME = "YOLOv8s"
-BLOB_PATH = os.path.join(MODEL_DIR, f"{BLOB_NAME}.blob")
-CONFIG_PATH = os.path.join(MODEL_DIR, f"{BLOB_NAME}.json")
+POST_FRAME_FPS = 10
+POST_TELEM_HZ = 5
+REQUEST_TIMEOUT = 2.0
 
 # --- GPIO Configuration ---
-# The BCM pin number that will send a HIGH signal to the Drilling & Enclosure subsystem.
-DRILL_GPIO_PIN: int = 17
+DRILL_GPIO_PIN = 18
 
-# --- Vision Processing Calibration ---
+# --- Gauge Calibration ---
+GAUGE_MIN_ANGLE_DEG = 225.0
+GAUGE_MAX_ANGLE_DEG = -45.0
+GAUGE_MIN_PRESSURE_BAR = 0.0
+GAUGE_MAX_PRESSURE_BAR = 10.0
+DRILL_PRESSURE_THRESHOLD = 2.0
 
-# Gauge Reading Calibration
-# Angle of the needle at the minimum and maximum pressure readings.
-# 0 degrees is horizontal-right, positive is counter-clockwise.
-# Refactored from drone_client.py and Roboflow blog.
-GAUGE_MIN_ANGLE_DEG: float = 225.0  # Angle for min pressure (e.g., 0 bar)
-GAUGE_MAX_ANGLE_DEG: float = -45.0  # Angle for max pressure (e.g., 10 bar)
-GAUGE_MIN_PRESSURE_BAR: float = 0.0
-GAUGE_MAX_PRESSURE_BAR: float = 10.0
-DRILL_THRESHOLD_BAR: float = 2.0  # Pressure threshold to trigger drill signal
-
-# ArUco Marker Configuration
-# The dictionary should match the markers used in the environment.
+# --- ArUco Configuration ---
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
-# Physical size of the ArUco marker in meters. Required for accurate pose estimation.
-ARUCO_MARKER_SIZE_M: float = 0.20 # As per project spec: "exactly 200x200mm"
+ARUCO_MARKER_SIZE_M = 0.20
 
-# --- Camera Intrinsics (IMPORTANT: CALIBRATE YOUR CAMERA) ---
-# These are placeholder values. You MUST replace them with the actual calibration
-# results for your specific OAK-D Lite camera to get accurate ArUco pose estimation.
-#
-# HOW TO CALIBRATE:
-# 1. Print a chessboard pattern (e.g., 9x6 squares). You can find patterns online.
-# 2. Using a script, capture 15-20 images of the chessboard from your OAK-D Lite
-#    at various angles and distances.
-# 3. Use OpenCV's `cv2.findChessboardCorners()` and `cv2.calibrateCamera()` functions
-#    with these images to compute the camera matrix and distortion coefficients.
-# 4. For a detailed guide, follow the official OpenCV tutorial:
-#    https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
-#
+# --- Camera Calibration ---
 CAMERA_MATRIX = np.array([
     [800.0, 0.0, 320.0],
     [0.0, 800.0, 320.0],
     [0.0, 0.0, 1.0]
 ], dtype=np.float32)
 
-DIST_COEFFS = np.zeros((5, 1), dtype=np.float32)  # Assuming no/minimal lens distortion for this application
+DIST_COEFFS = np.zeros((5, 1), dtype=np.float32)
 
-# --- Development & Testing Configuration ---
-# Set to a path to a directory of images, a single image file, or a video file
-# to run in testing mode. Set to None to use the live OAK-D camera feed.
-# This logic is refactored from your object_detection.py prototype.
-# Example: "/home/pi/EGH455/testing/images/"
-# Example: "/home/pi/EGH455/testing/videos/near_blue_A.mp4"
-INPUT_PATH: str | None = None
+# --- Test Mode Display ---
+TEST_MODE_WINDOW_NAME = "TAIP Test Mode"
+TEST_MODE_DISPLAY_TIME = 100  # ms
+TEST_MODE_AUTO_ADVANCE = True

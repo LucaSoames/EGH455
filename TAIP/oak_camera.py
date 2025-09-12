@@ -7,8 +7,7 @@ This module encapsulates all interactions with the Luxonis OAK-D Lite camera.
 It sets up a single DepthAI pipeline for both RGB video streaming and YOLOv8s
 neural network inference. A dedicated background thread continuously fetches
 data from the device, ensuring the main application loop is non-blocking.
-It provides synchronised RGB frames, monochrome frames (for ArUco), and YOLO detections. 
-It also includes a MockCamera class to enable file-based testing.
+It provides synchronised RGB frames, monochrome frames (for ArUco), and YOLO detections.
 """
 
 import depthai as dai
@@ -45,17 +44,18 @@ class OakCamera:
             self._thread.start()
             print("Camera and inference thread started.")
         except Exception as e:
-            print(f"FATAL: Failed to initialize OAK-D Lite device: {e}")
+            print(f"FATAL: Failed to initialise OAK-D Lite device: {e}")
             raise
 
     def _load_config(self):
         """Loads model configuration from the JSON file."""
         try:
             with open(config.CONFIG_PATH, 'r') as f:
-                cfg = json.load(f)
-            self.class_names = cfg["mappings"]["labels"]
-            self.model_input_size = tuple(map(int, cfg["nn_config"]["input_size"].split('x')))
-            if not self.class_names or not self.model_input_size: raise ValueError("Config invalid")
+                self.model_config = json.load(f)
+            self.class_names = self.model_config["mappings"]["labels"]
+            self.model_input_size = tuple(map(int, self.model_config["nn_config"]["input_size"].split('x')))
+            if not self.class_names or not self.model_input_size: 
+                raise ValueError("Config invalid")
         except Exception as e:
             print(f"FATAL: Could not load model config at {config.CONFIG_PATH}: {e}")
             raise
@@ -76,7 +76,7 @@ class OakCamera:
         xout_mono.setStreamName("mono")
         xout_nn.setStreamName("nn")
 
-        # --- Properties ---
+        # --- Camera Properties ---
         cam_rgb.setPreviewSize(self.model_input_size)
         cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         cam_rgb.setInterleaved(False)
@@ -87,13 +87,13 @@ class OakCamera:
         mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B) # Left stereo camera
         mono_cam.setFps(30)
 
-        # --- YOLO Network Configuration (loaded from JSON) ---
-        nn_meta = self.nn_config['nn_config']['NN_specific_metadata']
-        detection_network.setBlobPath(config.BLOB_PATH)
-        detection_network.setConfidenceThreshold(nn_meta['confidence_threshold'])
+        # --- YOLO Network Configuration ---
+        nn_meta = self.model_config['nn_config']['NN_specific_metadata']
+        detection_network.setBlobPath(str(config.BLOB_PATH))
+        detection_network.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
         detection_network.setNumClasses(nn_meta['classes'])
         detection_network.setCoordinateSize(nn_meta['coordinates'])
-        detection_network.setIouThreshold(nn_meta['iou_threshold'])
+        detection_network.setIouThreshold(config.IOU_THRESHOLD)
 
         # --- Linking ---
         cam_rgb.preview.link(detection_network.input)
@@ -174,48 +174,4 @@ class OakCamera:
         if hasattr(self, 'device'):
             self.device.close()
         print("OAK-D Lite closed.")
-
-class MockCamera:
-    """A mock camera class for testing the system with local image/video files."""
-    def __init__(self, input_path: str):
-        self.input_path = Path(input_path)
-        self.files = []
-        self.cap = None
-        self.model_input_size = (640, 640)
-        try:
-            with open(config.CONFIG_PATH, 'r') as f:
-                cfg = json.load(f)
-            self.class_names = cfg["mappings"]["labels"]
-        except Exception:
-            self.class_names = [f"class_{i}" for i in range(80)]
-        
-        if self.input_path.is_dir():
-            self.files = sorted([p for p in self.input_path.glob('*') if p.suffix.lower() in ['.jpg', '.jpeg', '.png']])
-        elif self.input_path.is_file():
-            self.cap = cv2.VideoCapture(str(self.input_path))
-        print(f"MockCamera initialized with path: {input_path}")
-    
-    def get_latest_rgb_frame(self) -> Optional[np.ndarray]:
-        if self.files:
-            if not hasattr(self, 'image_idx') or self.image_idx >= len(self.files): return None
-            frame = cv2.imread(str(self.files[self.image_idx]))
-            self.image_idx += 1
-            return frame
-        if self.cap and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            return frame if ret else None
-        return None
-
-    def get_latest_mono_frame(self) -> Optional[np.ndarray]:
-        # In test mode, we simulate the mono frame by converting the RGB frame
-        frame = self.get_latest_rgb_frame()
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame is not None else None
-    
-    def get_latest_detections(self) -> List[YoloDetection]:
-        # This mock doesn't run inference; it will be done in the main testing loop.
-        return []
-
-    def close(self):
-        if self.cap: 
-            self.cap.release()
 

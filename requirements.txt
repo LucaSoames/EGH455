@@ -2,7 +2,7 @@
 # Core runtime dependencies #
 ############################
 # OAK-D / DepthAI
-depthai>=2.18,<3
+depthai>=2.24,<3
 blobconverter>=1.4.3
 
 # Computer vision

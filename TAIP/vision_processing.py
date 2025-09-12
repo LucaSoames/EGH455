@@ -11,13 +11,15 @@ ArUco marker poses.
 import cv2
 import numpy as np
 import math
+import json
+import depthai as dai
 from typing import List, Optional
 
 # Import our custom data models and configuration
 import config
 from data_models import YoloDetection, ArucoDetection
 
-# Initialize the ArUco detector once as a module-level object for efficiency
+# Initialise the ArUco detector once as a module-level object for efficiency
 _aruco_detector = cv2.aruco.ArucoDetector(config.ARUCO_DICT)
 
 def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
@@ -117,3 +119,85 @@ def detect_aruco_markers(
             )
             
     return detected_markers
+
+def draw_detections_on_frame(frame: np.ndarray, 
+                           detections: List[YoloDetection], 
+                           aruco_markers: List[ArucoDetection]) -> np.ndarray:
+    """
+    Draw detection results on a frame for visualization.
+    
+    Args:
+        frame: Input frame
+        detections: YOLO detections to draw
+        aruco_markers: ArUco markers to draw
+        
+    Returns:
+        Frame with detections drawn
+    """
+    result_frame = frame.copy()
+    
+    # Draw YOLO detections
+    for detection in detections:
+        # Convert relative coordinates to absolute
+        h, w = frame.shape[:2]
+        x1 = int(detection.box[0] * w)
+        y1 = int(detection.box[1] * h)
+        x2 = int(detection.box[2] * w)
+        y2 = int(detection.box[3] * h)
+        
+        # Draw bounding box
+        color = (0, 255, 0) if detection.class_name in ['Gauge_Centre', 'Needle_Tip'] else (255, 0, 0)
+        cv2.rectangle(result_frame, (x1, y1), (x2, y2), color, 2)
+        
+        # Draw label
+        label = f"{detection.class_name}: {detection.confidence:.2f}"
+        cv2.putText(result_frame, label, (x1, y1 - 10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    
+    # Draw ArUco markers
+    for marker in aruco_markers:
+        # Draw marker ID
+        cv2.putText(result_frame, f"ArUco {marker.marker_id}", 
+                   (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    
+    return result_frame
+
+def validate_gauge_calibration() -> bool:
+    """Validate gauge calibration parameters."""
+    try:
+        # Check angle range
+        angle_range = abs(config.GAUGE_MAX_ANGLE_DEG - config.GAUGE_MIN_ANGLE_DEG)
+        if angle_range < 90 or angle_range > 300:
+            print(f"Warning: Unusual gauge angle range: {angle_range:.1f} degrees")
+            return False
+            
+        # Check pressure range
+        pressure_range = config.GAUGE_MAX_PRESSURE_BAR - config.GAUGE_MIN_PRESSURE_BAR
+        if pressure_range <= 0:
+            print("Error: Invalid pressure range")
+            return False
+            
+        print("✓ Gauge calibration valid")
+        return True
+        
+    except Exception as e:
+        print(f"Error validating gauge calibration: {e}")
+        return False
+
+def show_inference_visualisation(frame, detections, aruco_markers, gauge_pressure):
+    """Show visualisation window for file mode."""
+    display_frame = draw_detections_on_frame(frame, detections, aruco_markers)
+    
+    # Add gauge reading overlay
+    if gauge_pressure is not None:
+        cv2.putText(display_frame, f"Pressure: {gauge_pressure:.2f} bar", 
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    
+    # Add detection count
+    cv2.putText(display_frame, f"Detections: {len(detections)}", 
+               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    
+    # Show frame
+    cv2.imshow("TAIP File Mode Visualisation", display_frame)
+    key = cv2.waitKey(config.TEST_MODE_DISPLAY_TIME) & 0xFF
+    return key

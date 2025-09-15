@@ -27,7 +27,7 @@ The system consists of six main modules:
 ## Key Features
 
 ### Computer Vision
-- ✅ Real-time YOLO object detection (YOLOv5s model)
+- ✅ Real-time YOLO object detection (YOLOv8n model)
 - ✅ Pressure gauge reading with angle-to-pressure mapping
 - ✅ ArUco marker detection and pose estimation
 - ✅ Configurable confidence thresholds and filtering
@@ -75,7 +75,7 @@ The system consists of six main modules:
    ```
 
 3. **Model Files**:
-   - Ensure YOLOv5s.blob is present in `../models/blobs/`
+   - Ensure YOLOv8n.blob is present in `../models/blobs/`
    - Verify model configuration JSON exists at `../models/blobs/YOLOv8s.json`
 
 ### Verification
@@ -154,7 +154,7 @@ The system automatically activates drilling when:
 ### Processing Pipeline
 
 1. **Frame Capture**: OAK-D captures 640x640 frames at 30 FPS
-2. **YOLO Inference**: Myriad X VPU runs YOLOv5s model
+2. **YOLO Inference**: Myriad X VPU runs YOLOv8n model
 3. **Gauge Reading**: Calculate pressure from needle angle
 4. **ArUco Detection**: Find and estimate marker poses
 5. **Environmental Sensing**: Read Enviro+ sensors

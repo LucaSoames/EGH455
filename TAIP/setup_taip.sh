@@ -135,8 +135,8 @@ fi
 
 # Check for model files
 echo -e "\n10. Checking model files..."
-if [ -f "../models/blobs/YOLOv5s.blob" ]; then
-    print_status "YOLOv5s model found"
+if [ -f "../models/blobs/YOLOv8n.blob" ]; then
+    print_status "YOLOv8n model found"
 elif [ -f "../models/blobs/YOLOv8s.blob" ]; then
     print_status "YOLOv8s model found (will use as backup)"
 else

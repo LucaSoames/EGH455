@@ -13,89 +13,99 @@ AI library (camera_calibration.py).
 Once, you have read the camera calibration parameters, 
 you can use them to estimate the pose of an ArUCO marker 
 using the ArUCO library functions.
-
-Sample Usage:-
-python pose_estimation.py --K_Matrix calibration_matrix.npy --D_Coeff distortion_coefficients.npy --type DICT_5X5_100
 '''
-
-import numpy as np
 import cv2
-import sys
-from utils import ARUCO_DICT
-import argparse
-import time
+import depthai as dai
+from TAIP.config import (
+    CAMERA_MATRIX,
+    DISTORTION_COEFFS,
+    ARUCO_DICT,
+    ARUCO_MARKER_SIZE_M,
+    CAMERA_PREVIEW_SIZE,
+    CAMERA_ARUCO_SOURCE
+)
 
 
-def pose_estimation(frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
-
-    '''
-    frame - Frame from the video stream
-    matrix_coefficients - Intrinsic matrix of the calibrated camera
-    distortion_coefficients - Distortion coefficients associated with your camera
-
-    return:-
-    frame - The frame with the axis drawn on it
-    '''
-
+def pose_estimation(frame, aruco_dict_type, matrix_coeffs, dist_coeffs):
+    """
+    Estimate and draw ArUco marker poses on frame.
+    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    cv2.aruco_dict = cv2.aruco.Dictionary_get(aruco_dict_type)
-    parameters = cv2.aruco.DetectorParameters_create()
 
+    # switch to new‐style detector
+    params = cv2.aruco.DetectorParameters()
 
-    corners, ids, rejected_img_points = cv2.aruco.detectMarkers(gray, cv2.aruco_dict,parameters=parameters,
-        cameraMatrix=matrix_coefficients,
-        distCoeff=distortion_coefficients)
+    # new vs old API detection
+    if hasattr(cv2.aruco, 'ArucoDetector'):
+        detector = cv2.aruco.ArucoDetector(aruco_dict_type, params)
+        corners, ids, _ = detector.detectMarkers(gray)
+    else:
+        corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict_type, parameters=params)
 
-        # If markers are detected
-    if len(corners) > 0:
-        for i in range(0, len(ids)):
-            # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera coefficients)
-            rvec, tvec, markerPoints = cv2.aruco.estimatePoseSingleMarkers(corners[i], 0.02, matrix_coefficients,
-                                                                       distortion_coefficients)
-            # Draw a square around the markers
-            cv2.aruco.drawDetectedMarkers(frame, corners) 
+    if ids is not None and len(corners) > 0:
+        # draw the marker outlines + IDs
+        cv2.aruco.drawDetectedMarkers(frame, corners, ids)
 
-            # Draw Axis
-            cv2.aruco.drawAxis(frame, matrix_coefficients, distortion_coefficients, rvec, tvec, 0.01)  
+        # estimate each marker’s pose (module-level API)
+        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+            corners,
+            ARUCO_MARKER_SIZE_M,
+            matrix_coeffs,
+            dist_coeffs
+        )
 
+        # draw axes using the generic drawFrameAxes call
+        for rvec, tvec in zip(rvecs, tvecs):
+            cv2.drawFrameAxes(
+                frame,
+                matrix_coeffs,
+                dist_coeffs,
+                rvec,
+                tvec,
+                0.01,       # length in metres
+                thickness=2
+            )
     return frame
 
+def create_oak_pipeline(source: str) -> dai.Pipeline:
+    p = dai.Pipeline()
+    if source.upper() == 'RGB':
+        cam = p.createColorCamera()
+        xout = p.createXLinkOut()
+
+        cam.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+        cam.setPreviewSize(*CAMERA_PREVIEW_SIZE)
+        cam.setInterleaved(True)  # now outputs 3-channel BGR
+        cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
+        cam.setFps(30)
+
+        # link preview directly → guaranteed BGR888 interleaved frames
+        cam.preview.link(xout.input)
+        xout.setStreamName('frame')
+    else:  # LEFT mono
+        mono = p.createMonoCamera()
+        xout = p.createXLinkOut()
+        mono.setBoardSocket(dai.CameraBoardSocket.CAM_B)
+        mono.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
+        mono.setFps(30)
+        mono.out.link(xout.input)
+        xout.setStreamName('frame')
+    return p
+
 if __name__ == '__main__':
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-k", "--K_Matrix", required=True, help="Path to calibration matrix (numpy file)")
-    ap.add_argument("-d", "--D_Coeff", required=True, help="Path to distortion coefficients (numpy file)")
-    ap.add_argument("-t", "--type", type=str, default="DICT_ARUCO_ORIGINAL", help="Type of ArUCo tag to detect")
-    args = vars(ap.parse_args())
-
-    
-    if ARUCO_DICT.get(args["type"], None) is None:
-        print(f"ArUCo tag type '{args['type']}' is not supported")
-        sys.exit(0)
-
-    aruco_dict_type = ARUCO_DICT[args["type"]]
-    calibration_matrix_path = args["K_Matrix"]
-    distortion_coefficients_path = args["D_Coeff"]
-    
-    k = np.load(calibration_matrix_path)
-    d = np.load(distortion_coefficients_path)
-
-    video = cv2.VideoCapture(0)
-    time.sleep(2.0)
-
-    while True:
-        ret, frame = video.read()
-
-        if not ret:
-            break
-        
-        output = pose_estimation(frame, aruco_dict_type, k, d)
-
-        cv2.imshow('Estimated Pose', output)
-
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-
-    video.release()
+    # Spin up OAK-D pipeline
+    pipeline = create_oak_pipeline(CAMERA_ARUCO_SOURCE)
+    with dai.Device(pipeline) as device:
+        q = device.getOutputQueue(name='frame', maxSize=4, blocking=False)
+        while True:
+            in_msg = q.get()             # depthai.ImgFrame
+            data   = in_msg.getFrame()   # numpy array
+            if CAMERA_ARUCO_SOURCE.upper() == 'LEFT':
+                frame = cv2.cvtColor(data, cv2.COLOR_GRAY2BGR)
+            else:
+                frame = data
+            output = pose_estimation(frame, ARUCO_DICT, CAMERA_MATRIX, DISTORTION_COEFFS)
+            cv2.imshow('ArUco Pose', output)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
     cv2.destroyAllWindows()

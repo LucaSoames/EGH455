@@ -35,25 +35,26 @@ class FileInferenceProcessor:
         self.nn_meta = cfg["nn_config"]["NN_specific_metadata"]
 
     def _create_pipeline(self):
-        p = dai.Pipeline()
-        xin = p.create(dai.node.XLinkIn)
-        nn = p.create(dai.node.YoloDetectionNetwork)
-        xout = p.create(dai.node.XLinkOut)
+         p = dai.Pipeline()
+         xin = p.createXLinkIn()
+         nn  = p.createYoloDetectionNetwork()
+         xout = p.createXLinkOut()
 
-        xin.setStreamName("host_in")
-        xout.setStreamName("nn_out")
+         xin.setStreamName("host_in")
+         xout.setStreamName("nn_out")
 
-        nn.setBlobPath(str(config.BLOB_PATH))
-        nn.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
-        nn.setIouThreshold(config.IOU_THRESHOLD)
-        nn.setNumClasses(self.nn_meta["classes"])
-        nn.setCoordinateSize(self.nn_meta["coordinates"])
-        nn.setNumInferenceThreads(2)
-        nn.input.setBlocking(False)
+         # Use on-device decoding via the Myriad X
+         nn.setBlobPath(str(config.BLOB_PATH))
+         nn.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
+         nn.setIouThreshold(config.IOU_THRESHOLD)
+         nn.setNumClasses(self.nn_meta["classes"])
+         nn.setCoordinateSize(self.nn_meta["coordinates"])
+         nn.setNumInferenceThreads(2)
+         nn.input.setBlocking(False)
 
-        xin.out.link(nn.input)
-        nn.out.link(xout.input)
-        return p
+         xin.out.link(nn.input)
+         nn.out.link(xout.input)
+         return p
 
     def run_inference(self, frame_bgr) -> List[YoloDetection]:
         # Resize on host to model input size (matches training/export)

@@ -64,43 +64,41 @@ class OakCamera:
         """Builds the DepthAI pipeline with RGB, Mono, and YOLO nodes."""
         pipeline = dai.Pipeline()
 
-        # --- Nodes ---
-        cam_rgb = pipeline.create(dai.node.ColorCamera)
-        mono_cam = pipeline.create(dai.node.MonoCamera)
-        detection_network = pipeline.create(dai.node.YoloDetectionNetwork)
-        xout_rgb = pipeline.create(dai.node.XLinkOut)
-        xout_mono = pipeline.create(dai.node.XLinkOut)
-        xout_nn = pipeline.create(dai.node.XLinkOut)
-        
+        cam_rgb = pipeline.createColorCamera()
+        mono_cam = pipeline.createMonoCamera()
+        yolo_net = pipeline.createYoloDetectionNetwork()
+        xout_rgb = pipeline.createXLinkOut()
+        xout_mono = pipeline.createXLinkOut()
+        xout_nn = pipeline.createXLinkOut()
+
         xout_rgb.setStreamName("rgb")
         xout_mono.setStreamName("mono")
         xout_nn.setStreamName("nn")
 
-        # --- Camera Properties ---
+        # RGB camera → YOLO input + passthrough for visualisation
         cam_rgb.setPreviewSize(self.model_input_size)
-        cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
         cam_rgb.setInterleaved(False)
         cam_rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-        cam_rgb.setFps(30)
+        cam_rgb.setFps(config.CAMERA_FPS)
+        cam_rgb.preview.link(yolo_net.input)
+        yolo_net.passthrough.link(xout_rgb.input)
 
+        # Mono camera for ArUco
+        mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B)
         mono_cam.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
-        mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B) # Left stereo camera
-        mono_cam.setFps(30)
-
-        # --- YOLO Network Configuration ---
-        nn_meta = self.model_config['nn_config']['NN_specific_metadata']
-        detection_network.setBlobPath(str(config.BLOB_PATH))
-        detection_network.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
-        detection_network.setNumClasses(nn_meta['classes'])
-        detection_network.setCoordinateSize(nn_meta['coordinates'])
-        detection_network.setIouThreshold(config.IOU_THRESHOLD)
-
-        # --- Linking ---
-        cam_rgb.preview.link(detection_network.input)
+        mono_cam.setFps(config.CAMERA_FPS)
         mono_cam.out.link(xout_mono.input)
-        detection_network.passthrough.link(xout_rgb.input)
-        detection_network.out.link(xout_nn.input)
-        
+
+        # On-device YOLOv8 inference
+        nn_meta = self.model_config['nn_config']['NN_specific_metadata']
+        yolo_net.setBlobPath(str(config.BLOB_PATH))
+        yolo_net.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
+        yolo_net.setIouThreshold(config.IOU_THRESHOLD)
+        yolo_net.setNumClasses(nn_meta['classes'])
+        yolo_net.setCoordinateSize(nn_meta['coordinates'])
+        yolo_net.setNumInferenceThreads(2)
+        yolo_net.out.link(xout_nn.input)
+
         return pipeline
 
     def _thread_loop(self):

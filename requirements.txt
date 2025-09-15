@@ -6,11 +6,11 @@ depthai==2.30.0
 blobconverter>=1.4.3
 
 # Computer vision
-opencv-contrib-python>=4.9,<5; sys_platform == "win32"
-# To enable cv2.imshow on Raspberry Pi Desktop, switch to non-headless build:
-# opencv-contrib-python>=4.9,<5; sys_platform == "linux"
-opencv-contrib-python-headless>=4.9,<5; sys_platform != "win32"
-numpy>=2.0,<3
+opencv-contrib-python>=4.9,<5; sys_platform != "win32"
+# (on Linux this gives you the GUI‐enabled contrib build)
+
+numpy>=1.22,<2.0
+# numpy>=2.0,<3
 
 # Web server (Flask 3.0.x stack)
 Flask==3.0.3

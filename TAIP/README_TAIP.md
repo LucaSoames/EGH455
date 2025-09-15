@@ -93,19 +93,20 @@ python3 verify_taip_installation.py
 ```python
 # Camera settings
 CAMERA_PREVIEW_SIZE = (640, 640)
+CAMERA_FPS = 30
 CONFIDENCE_THRESHOLD = 0.5
 
 # Gauge calibration
-GAUGE_MIN_ANGLE = -45.0      # 10 bar position
-GAUGE_MAX_ANGLE = 225.0      # 0 bar position
-DRILL_PRESSURE_THRESHOLD = 2.0  # bar
+GAUGE_MIN_ANGLE_DEG = 225.0      # 0 bar
+GAUGE_MAX_ANGLE_DEG = -45.0      # 10 bar
+DRILL_PRESSURE_THRESHOLD = 2.0
 
 # Network settings
-GCS_BASE_URL = "http://192.168.1.100:5000"
+GCS_URL = "http://192.168.1.100:5000"
 REQUEST_TIMEOUT = 2.0
 
 # GPIO settings
-DRILL_TRIGGER_PIN = 18
+DRILL_GPIO_PIN = 18
 ```
 
 ### Calibration

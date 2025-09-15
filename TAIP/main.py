@@ -24,7 +24,7 @@ from oak_camera import OakCamera
 from vision_processing import (calculate_gauge_reading,
                                detect_aruco_markers,
                                show_inference_visualisation)
-from file_inference import FileInferenceProcessor  # FIX: moved here
+from file_inference import FileInferenceProcessor
 from gcs_client import GCSClient
 from file_processor import FileProcessor
 
@@ -166,16 +166,22 @@ class LCDDisplay:
 
 
 class DrillController:
-    """Handles drill activation via GPIO."""
+    """Handles drill activation via GPIO (graceful fallback if GPIO unsupported)."""
     
     def __init__(self):
         self.gpio_available = IS_GPIO_AVAILABLE
         self.drill_active = False
-        
         if self.gpio_available:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(config.DRILL_GPIO_PIN, GPIO.OUT, initial=GPIO.LOW)
-            print(f"✓ GPIO pin {config.DRILL_GPIO_PIN} initialised")
+            try:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(config.DRILL_GPIO_PIN, GPIO.OUT, initial=GPIO.LOW)
+                print(f"✓ GPIO pin {config.DRILL_GPIO_PIN} initialised")
+            except RuntimeError as e:
+                print(f"GPIO unavailable ({e}). Continuing without drill control.")
+                self.gpio_available = False
+            except Exception as e:
+                print(f"GPIO init error: {e}")
+                self.gpio_available = False
     
     def control_drill(self, gauge_reading: Optional[float]):
         """Control drill activation based on pressure reading."""
@@ -264,7 +270,7 @@ class MainApp:
             # ArUco detection (isolated to avoid fatal loop errors)
             try:
                 aruco_detections = detect_aruco_markers(
-                    mono_frame, config.CAMERA_MATRIX, config.DIST_COEFFS
+                    mono_frame, config.CAMERA_MATRIX, config.DISTORTION_COEFFS
                 )
             except Exception as e:
                 print(f"ArUco error: {e}")
@@ -282,8 +288,10 @@ class MainApp:
                                             env_data, gauge_reading, bool(self.file_processor))
 
             if self.file_processor:
-                key = show_inference_visualisation(rgb_frame, yolo_detections,
-                                                   aruco_detections, gauge_reading)
+                key = show_inference_visualisation(
+                    rgb_frame, yolo_detections, aruco_detections, gauge_reading,
+                    config.CAMERA_MATRIX, config.DISTORTION_COEFFS
+                )
                 if key == ord('q'):
                     print("Quit requested by user")
                     break

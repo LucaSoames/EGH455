@@ -34,6 +34,7 @@ INPUT_PATH = PROJECT_ROOT / "models/testing/images"
 
 # --- Camera Configuration ---
 CAMERA_PREVIEW_SIZE = (640, 640)
+CAMERA_FPS = 30  # Added: used by OAK pipeline
 CONFIDENCE_THRESHOLD = 0.5
 IOU_THRESHOLD = 0.5
 
@@ -59,26 +60,65 @@ REQUEST_TIMEOUT = 2.0
 DRILL_GPIO_PIN = 18
 
 # --- Gauge Calibration ---
-# These values map needle angles to pressure readings
-GAUGE_MIN_ANGLE_DEG = 225.0      # Angle at minimum pressure (0 bar)
-GAUGE_MAX_ANGLE_DEG = -45.0      # Angle at maximum pressure (10 bar)
+# These values map needle angles to pressure readings.
+# Convention:
+#   GAUGE_MIN_ANGLE_DEG -> GAUGE_MIN_PRESSURE_BAR (e.g. 225° = 0 bar)
+#   GAUGE_MAX_ANGLE_DEG -> GAUGE_MAX_PRESSURE_BAR (e.g. -45° (315°) = 10 bar)
+# The needle sweeps CLOCKWISE from min->max over (min - max) % 360 degrees.
+GAUGE_MIN_ANGLE_DEG = 225.0
+GAUGE_MAX_ANGLE_DEG = -45.0
 GAUGE_MIN_PRESSURE_BAR = 0.0
 GAUGE_MAX_PRESSURE_BAR = 10.0
+GAUGE_SWEEP_DEG = ( (GAUGE_MIN_ANGLE_DEG % 360) - (GAUGE_MAX_ANGLE_DEG % 360) ) % 360  # Expect 270°
+if GAUGE_SWEEP_DEG == 0:
+    GAUGE_SWEEP_DEG = 1e-6  # avoid divide by zero
 DRILL_PRESSURE_THRESHOLD = 2.0   # Activate drill below this pressure
 
 # --- ArUco Configuration ---
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 ARUCO_MARKER_SIZE_M = 0.20  # Physical size of markers in metres
 
-# --- Camera Calibration ---
-# Default calibration matrix - should be replaced with actual camera calibration
-CAMERA_MATRIX = np.array([
-    [800.0, 0.0, 320.0],
-    [0.0, 800.0, 320.0],
-    [0.0, 0.0, 1.0]
+# --- Select which camera sensor to use for ArUco pose estimation ---
+#   'RGB'  → use the OAK-D colour camera (CAM_A)
+#   'LEFT' → use the left mono camera (CAM_B)
+CAMERA_ARUCO_SOURCE = 'RGB'   # 'LEFT' or 'RGB'
+
+# --- Camera Calibration (RGB camera, CAM_A socket) ---
+CAMERA_MATRIX_RGB = np.array([
+    [2968.344482421875,    0.0,               1898.425048828125],
+    [   0.0,             2968.344482421875,   1158.2735595703125],
+    [   0.0,                0.0,                 1.0]
 ], dtype=np.float32)
 
-DIST_COEFFS = np.zeros((5, 1), dtype=np.float32)
+DISTORTION_COEFFS_RGB = np.array([
+    -3.0139496326446533,
+    -1.5687170028686523,
+    -0.0007319296128116548,
+    -0.0005127631011418998,
+     33.57282257080078
+], dtype=np.float32).reshape(-1, 1)
+
+# --- Camera Calibration (left mono camera, CAM_B socket) ---
+CAMERA_MATRIX_LEFT = np.array([
+    [452.614501953125,   0.0,              307.8687438964844],
+    [0.0,                452.614501953125, 233.67922973632813],
+    [0.0,                0.0,              1.0]
+], dtype=np.float32)
+
+DISTORTION_COEFFS_LEFT = np.array([
+    3.8201379776000977,
+   -52.87614059448242,
+   -0.0017299839528277516,
+    0.0011204829206690192,
+  218.44808959960938
+], dtype=np.float32).reshape(-1, 1)
+
+if CAMERA_ARUCO_SOURCE.upper() == 'RGB':
+    CAMERA_MATRIX = CAMERA_MATRIX_RGB
+    DISTORTION_COEFFS = DISTORTION_COEFFS_RGB
+else:
+    CAMERA_MATRIX = CAMERA_MATRIX_LEFT
+    DISTORTION_COEFFS = DISTORTION_COEFFS_LEFT
 
 # --- Test Mode Display ---
 TEST_MODE_WINDOW_NAME = "TAIP Test Mode"
@@ -102,4 +142,8 @@ def validate_config():
             print(" -", e)
         return False
     print("✓ Configuration valid")
+
+    # Additional gauge sanity check
+    if not (150.0 <= GAUGE_SWEEP_DEG <= 315.0):
+        print(f"Warning: Unusual gauge sweep: {GAUGE_SWEEP_DEG:.1f} deg")
     return True

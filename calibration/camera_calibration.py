@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Connect Device
 with dai.Device() as device:
-    calibFile = str((Path(__file__).parent / Path(f"calib_{device.getMxId()}.json")).resolve().absolute())
+    calibFile = str((Path(__file__).parent / Path(f"cam_calib.json")).resolve().absolute())
     if len(sys.argv) > 1:
         calibFile = sys.argv[1]
 

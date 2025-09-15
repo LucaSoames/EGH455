@@ -44,11 +44,9 @@ class GCSClient:
     def _send_post_request(self, url: str, **kwargs: Any) -> None:
         """Helper function to send a POST request and handle exceptions."""
         try:
-            self.session.post(url, timeout=1.0, **kwargs)
-        except requests.exceptions.RequestException as e:
-            # Silently handle network errors to avoid crashing the main loop
-            # In a production system, this could log to a file.
-            # print(f"GCS connection error: {e}")
+            timeout = kwargs.pop("timeout", config.REQUEST_TIMEOUT)
+            self.session.post(url, timeout=timeout, **kwargs)
+        except requests.exceptions.RequestException:
             pass
 
     def send_data(self, payload_data: PayloadData) -> None:
@@ -63,7 +61,8 @@ class GCSClient:
         headers = {'Content-Type': 'application/json'}
         
         # Submit the network request to the thread pool
-        self.executor.submit(self._send_post_request, self.telemetry_url, data=json_data, headers=headers)
+        self.executor.submit(self._send_post_request, self.telemetry_url,
+                             data=json_data, headers=headers, timeout=config.REQUEST_TIMEOUT)
 
     def send_frame(self, frame: np.ndarray) -> None:
         """
@@ -80,7 +79,8 @@ class GCSClient:
         headers = {'Content-Type': 'image/jpeg'}
         
         # Submit the network request to the thread pool
-        self.executor.submit(self._send_post_request, self.frame_url, data=buffer.tobytes(), headers=headers)
+        self.executor.submit(self._send_post_request, self.frame_url,
+                             data=buffer.tobytes(), headers=headers, timeout=config.REQUEST_TIMEOUT)
 
     def shutdown(self) -> None:
         """Shuts down the thread pool executor."""

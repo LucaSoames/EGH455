@@ -10,17 +10,17 @@ Simply edit `/home/pi/EGH455/TAIP/config.py` and modify the `TEST_INPUT_PATH` se
 
 #### 1. Live Camera Mode (Default)
 ```python
-TEST_INPUT_PATH = None
+INPUT_PATH = None
 ```
 
 #### 2. Test with Image Directory
 ```python
-TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/images"
+INPUT_PATH = PROJECT_ROOT / "models/testing/images"
 ```
 
 #### 3. Test with Video File
 ```python
-TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
+INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
 ```
 
 ### Running the System
@@ -50,14 +50,14 @@ The configuration file provides commented examples for easy switching:
 
 ```python
 # Live camera mode (default)
-TEST_INPUT_PATH = None
+INPUT_PATH = None
 
 # Test with all images in folder
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/images"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/images"
 
 # Test with specific videos (uncomment one to use)
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
-# TEST_INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
 # etc...
 ```
 

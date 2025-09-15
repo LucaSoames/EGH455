@@ -1,0 +1,28 @@
+{
+    "model": {
+        "xml": "YOLOv8n.xml",
+        "bin": "YOLOv8n.bin"
+    },
+    "nn_config": {
+        "output_format": "detection",
+        "NN_family": "YOLO",
+        "input_size": "640x640",
+        "NN_specific_metadata": {
+            "classes": 4,
+            "coordinates": 4,
+            "anchors": [],
+            "anchor_masks": {},
+            "iou_threshold": 0.5,
+            "confidence_threshold": 0.5
+        }
+    },
+    "mappings": {
+        "labels": [
+            "Gauge_Centre",
+            "Needle_Tip",
+            "Valve_Closed",
+            "Valve_Open"
+        ]
+    },
+    "version": 1
+}

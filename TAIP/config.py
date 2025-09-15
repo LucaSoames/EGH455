@@ -39,7 +39,7 @@ IOU_THRESHOLD = 0.5
 
 # --- Model Configuration ---
 MODEL_DIR = PROJECT_ROOT / "models/blobs"
-BLOB_NAME = "YOLOv8s"
+BLOB_NAME = "YOLOv8n"
 BLOB_PATH = MODEL_DIR / f"{BLOB_NAME}.blob"
 CONFIG_PATH = MODEL_DIR / f"{BLOB_NAME}.json"
 

@@ -2,3 +2,8 @@
 /tools/
 /venv_openvino/
 /models/testing/videos
+*.mp4
+*.avi
+*.mov
+*.mkv
+/models/training/*

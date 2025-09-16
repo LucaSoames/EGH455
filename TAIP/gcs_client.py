@@ -92,10 +92,7 @@ class GCSClient:
 if __name__ == '__main__':
     print("Testing GCS Client...")
     
-    # Create a mock server URL (replace with a real test server if needed)
-    # For this test, you can run the provided `ground_station_server.py`
-    config.GCS_URL = "http://127.0.0.1:5000"
-    
+       
     client = GCSClient()
     
     # Create mock data

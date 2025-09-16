@@ -22,10 +22,11 @@ TAIP_ROOT = PROJECT_ROOT / "TAIP"
 # Set path to a directory of images or a video file to run in testing mode.
 
 # Production (live camera feed)
-# INPUT_PATH = None
+INPUT_PATH = None
+SHOW_LIVE_VISUALIZATION = True # Show live camera feed with detections overlayed
 
 # Testing (images)
-INPUT_PATH = PROJECT_ROOT / "models/testing/images"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/images"
 
 # Testing (video)
 # INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
@@ -34,9 +35,9 @@ INPUT_PATH = PROJECT_ROOT / "models/testing/images"
 
 # --- Camera Configuration ---
 CAMERA_PREVIEW_SIZE = (640, 640)
-CAMERA_FPS = 30  # Added: used by OAK pipeline
+CAMERA_FPS = 20
 CONFIDENCE_THRESHOLD = 0.5
-IOU_THRESHOLD = 0.5
+IOU_THRESHOLD = 0.01
 
 # --- Model Configuration ---
 MODEL_DIR = PROJECT_ROOT / "models/blobs"
@@ -44,8 +45,19 @@ BLOB_NAME = "YOLOv8n"
 BLOB_PATH = MODEL_DIR / f"{BLOB_NAME}.blob"
 CONFIG_PATH = MODEL_DIR / f"{BLOB_NAME}.json"
 
+# --- Visualisation Configuration ---
+DETECTION_TEXT_SIZE = 2.0  # Font scale for detection labels
+DETECTION_TEXT_THICKNESS = 4  # Text thickness for better visibility
+DETECTION_COLOURS = {
+    "Valve_Open": (0, 255, 0),      # Green
+    "Valve_Closed": (0, 0, 255),    # Red
+    "Needle_Tip": (0, 255, 255),    # Yellow
+    "Gauge_Centre": (255, 0, 0),    # Blue
+    "default": (0, 0, 0)            # Black 
+}
+
 # Trained YOLO classes
-YOLO_CLASSES = ["Gauge_Centre", "Needle_Tip", "Valve_Closed", "Valve_Open"]
+# YOLO_CLASSES = ["Gauge_Centre", "Needle_Tip", "Valve_Closed", "Valve_Open"]
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
@@ -56,25 +68,31 @@ POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
 REQUEST_TIMEOUT = 2.0
 
-# --- GPIO Configuration ---
-DRILL_GPIO_PIN = 18
-
 # --- Gauge Calibration ---
 # These values map needle angles to pressure readings.
 # Convention:
 #   GAUGE_MIN_ANGLE_DEG -> GAUGE_MIN_PRESSURE_BAR (e.g. 225° = 0 bar)
 #   GAUGE_MAX_ANGLE_DEG -> GAUGE_MAX_PRESSURE_BAR (e.g. -45° (315°) = 10 bar)
 # The needle sweeps CLOCKWISE from min->max over (min - max) % 360 degrees.
-GAUGE_MIN_ANGLE_DEG = 225.0
-GAUGE_MAX_ANGLE_DEG = -45.0
+GAUGE_MIN_ANGLE_DEG = 222.0
+GAUGE_MAX_ANGLE_DEG = -48.0
 GAUGE_MIN_PRESSURE_BAR = 0.0
 GAUGE_MAX_PRESSURE_BAR = 10.0
 GAUGE_SWEEP_DEG = ( (GAUGE_MIN_ANGLE_DEG % 360) - (GAUGE_MAX_ANGLE_DEG % 360) ) % 360  # Expect 270°
-if GAUGE_SWEEP_DEG == 0:
-    GAUGE_SWEEP_DEG = 1e-6  # avoid divide by zero
-DRILL_PRESSURE_THRESHOLD = 2.0   # Activate drill below this pressure
 
-# --- ArUco Configuration ---
+GAUGE_READING_OFFSET = 0.45 # Offset to add to gauge reading (bar) 
+SHOW_GAUGE_OVERLAY = True  # Overlay gauge calibration on output image
+
+# --- Drilling Subsystem Configuration ---
+DRILL_GPIO_PIN = 13
+DRILL_PRESSURE_THRESHOLD = 4.0  # Activate drill below this pressure
+DRILL_DURATION_SEC = 10.0       # Duration to run drill once activated
+DRILL_TRIGGER_COUNT = 5         # Hysteresis parameter (consecutive readings below-threshold required to trigger)
+PWM_FREQUENCY = 50              # Hz
+STOP_DUTY = 7.5                 # ~1.5ms pulse - stop
+ACTIVE_DUTY = 2.5               # ~0.5ms pulse - drilling (CCW)
+
+# --- ArUco Marker Configuration ---
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 ARUCO_MARKER_SIZE_M = 0.20  # Physical size of markers in metres
 
@@ -121,9 +139,13 @@ else:
     DISTORTION_COEFFS = DISTORTION_COEFFS_LEFT
 
 # --- Test Mode Display ---
-TEST_MODE_WINDOW_NAME = "TAIP Test Mode"
+TEST_MODE_WINDOW_NAME = "TAIP Test Mode Visualisation"
 TEST_MODE_DISPLAY_TIME = 100  # ms
 TEST_MODE_AUTO_ADVANCE = False
+
+# Automatically enable auto-advance if a video file is selected
+if not INPUT_PATH or Path(INPUT_PATH).is_file():
+    TEST_MODE_AUTO_ADVANCE = True
 
 def validate_config():
     """Basic configuration validation for test scripts."""
@@ -146,4 +168,6 @@ def validate_config():
     # Additional gauge sanity check
     if not (150.0 <= GAUGE_SWEEP_DEG <= 315.0):
         print(f"Warning: Unusual gauge sweep: {GAUGE_SWEEP_DEG:.1f} deg")
+    from vision_processing import validate_gauge_calibration
+    validate_gauge_calibration()
     return True

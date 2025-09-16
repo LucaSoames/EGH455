@@ -119,7 +119,7 @@ cd /home/pi/EGH455/TAIP
 
 ## Integration with Original object_detection.py
 
-The test mode functionality incorporates the best features from the original `object_detection.py`:
+The test mode functionality incorporates the best features from the original `object_detection.py`.
 
 ### Similar Features
 - Video and image processing capabilities

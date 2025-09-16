@@ -16,13 +16,27 @@ using the ArUCO library functions.
 '''
 import cv2
 import depthai as dai
+
+# TAIP/config.py contains global variables. It is in a sibling folder in the parent directory EGH455.
+import sys
+from pathlib import Path
+TAIP_PATH = (Path(__file__).resolve().parent.parent / 'TAIP').resolve()
+# Check if path exists before adding
+if TAIP_PATH.exists():
+    # Add the parent directory of TAIP to sys.path, not TAIP itself
+    parent_dir = Path(__file__).resolve().parent.parent
+    if str(parent_dir) not in map(str, map(Path, sys.path)):
+        sys.path.append(str(parent_dir))
+else:
+    raise FileNotFoundError(f"TAIP directory not found at {TAIP_PATH}")
+    
 from TAIP.config import (
-    CAMERA_MATRIX,
-    DISTORTION_COEFFS,
     ARUCO_DICT,
     ARUCO_MARKER_SIZE_M,
+    CAMERA_ARUCO_SOURCE,
+    CAMERA_MATRIX,
     CAMERA_PREVIEW_SIZE,
-    CAMERA_ARUCO_SOURCE
+    DISTORTION_COEFFS
 )
 
 
@@ -62,8 +76,8 @@ def pose_estimation(frame, aruco_dict_type, matrix_coeffs, dist_coeffs):
                 dist_coeffs,
                 rvec,
                 tvec,
-                0.01,       # length in metres
-                thickness=2
+                0.1,       # length in metres
+                thickness=3
             )
     return frame
 
@@ -77,7 +91,7 @@ def create_oak_pipeline(source: str) -> dai.Pipeline:
         cam.setPreviewSize(*CAMERA_PREVIEW_SIZE)
         cam.setInterleaved(True)  # now outputs 3-channel BGR
         cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-        cam.setFps(30)
+        cam.setFps(15)
 
         # link preview directly → guaranteed BGR888 interleaved frames
         cam.preview.link(xout.input)
@@ -87,7 +101,7 @@ def create_oak_pipeline(source: str) -> dai.Pipeline:
         xout = p.createXLinkOut()
         mono.setBoardSocket(dai.CameraBoardSocket.CAM_B)
         mono.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
-        mono.setFps(30)
+        mono.setFps(15)
         mono.out.link(xout.input)
         xout.setStreamName('frame')
     return p

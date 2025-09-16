@@ -83,6 +83,10 @@ class FileProcessor:
         nn.setCoordinateSize(self.nn_meta["coordinates"])
         nn.setNumInferenceThreads(2)
         nn.input.setBlocking(False)
+        
+        # The neural network input node will automatically resize the frame from the host.
+        # This is more efficient than resizing on the Pi's CPU.
+        nn.input.setQueueSize(1)
 
         xin.out.link(nn.input)
         nn.out.link(xout.input)
@@ -111,15 +115,13 @@ class FileProcessor:
         if frame is None:
             return []
             
-        # Resize on host to model input size (matches training/export)
-        resized = cv2.resize(frame, self.model_input)
-        planar = resized.transpose(2, 0, 1).flatten()
-
+        # Create a DepthAI ImgFrame and send it to the device.
+        # The device-side pipeline will handle resizing and format conversion.
         img = dai.ImgFrame()
-        img.setType(dai.RawImgFrame.Type.BGR888p)
-        img.setData(planar)
-        img.setWidth(self.model_input[0])
-        img.setHeight(self.model_input[1])
+        img.setType(dai.ImgFrame.Type.BGR888p)
+        img.setFrame(frame)
+        img.setWidth(frame.shape[1])
+        img.setHeight(frame.shape[0])
         self.q_in.send(img)
 
         # Block until results ready (avoids empty detections)

@@ -23,7 +23,7 @@ TAIP_ROOT = PROJECT_ROOT / "TAIP"
 
 # Production (live camera feed)
 INPUT_PATH = None
-SHOW_LIVE_VISUALIZATION = True # Show live camera feed with detections overlayed
+SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed on Pi
 
 # Testing (images)
 # INPUT_PATH = PROJECT_ROOT / "models/testing/images"
@@ -35,7 +35,7 @@ SHOW_LIVE_VISUALIZATION = True # Show live camera feed with detections overlayed
 
 # --- Camera Configuration ---
 CAMERA_PREVIEW_SIZE = (640, 640)
-CAMERA_FPS = 20
+CAMERA_FPS = 10
 CONFIDENCE_THRESHOLD = 0.5
 IOU_THRESHOLD = 0.01
 
@@ -74,13 +74,13 @@ REQUEST_TIMEOUT = 2.0
 #   GAUGE_MIN_ANGLE_DEG -> GAUGE_MIN_PRESSURE_BAR (e.g. 225° = 0 bar)
 #   GAUGE_MAX_ANGLE_DEG -> GAUGE_MAX_PRESSURE_BAR (e.g. -45° (315°) = 10 bar)
 # The needle sweeps CLOCKWISE from min->max over (min - max) % 360 degrees.
+GAUGE_READING_OFFSET = 0.45 # Offset to add to gauge reading (bar) 
 GAUGE_MIN_ANGLE_DEG = 222.0
 GAUGE_MAX_ANGLE_DEG = -48.0
 GAUGE_MIN_PRESSURE_BAR = 0.0
 GAUGE_MAX_PRESSURE_BAR = 10.0
 GAUGE_SWEEP_DEG = ( (GAUGE_MIN_ANGLE_DEG % 360) - (GAUGE_MAX_ANGLE_DEG % 360) ) % 360  # Expect 270°
 
-GAUGE_READING_OFFSET = 0.45 # Offset to add to gauge reading (bar) 
 SHOW_GAUGE_OVERLAY = True  # Overlay gauge calibration on output image
 
 # --- Drilling Subsystem Configuration ---
@@ -99,7 +99,7 @@ ARUCO_MARKER_SIZE_M = 0.20  # Physical size of markers in metres
 # --- Select which camera sensor to use for ArUco pose estimation ---
 #   'RGB'  → use the OAK-D colour camera (CAM_A)
 #   'LEFT' → use the left mono camera (CAM_B)
-CAMERA_ARUCO_SOURCE = 'RGB'   # 'LEFT' or 'RGB'
+CAMERA_ARUCO_SOURCE = 'LEFT'   # 'LEFT' or 'RGB'
 
 # --- Camera Calibration (RGB camera, CAM_A socket) ---
 CAMERA_MATRIX_RGB = np.array([
@@ -165,9 +165,27 @@ def validate_config():
         return False
     print("✓ Configuration valid")
 
-    # Additional gauge sanity check
-    if not (150.0 <= GAUGE_SWEEP_DEG <= 315.0):
-        print(f"Warning: Unusual gauge sweep: {GAUGE_SWEEP_DEG:.1f} deg")
-    from vision_processing import validate_gauge_calibration
-    validate_gauge_calibration()
+    # Gauge sanity check
+    try:
+        # Check angle range
+        angle_range = abs(GAUGE_MAX_ANGLE_DEG - GAUGE_MIN_ANGLE_DEG)
+        if not (150.0 <= GAUGE_SWEEP_DEG <= 315.0):
+             print(f"Warning: Unusual gauge sweep: {GAUGE_SWEEP_DEG:.1f} deg")
+        
+        # Check pressure range
+        pressure_range = GAUGE_MAX_PRESSURE_BAR - GAUGE_MIN_PRESSURE_BAR
+        if pressure_range <= 0:
+            errors.append("Error: Invalid pressure range")
+
+        if not errors:
+            print("✓ Gauge calibration appears valid")
+        else:
+            for e in errors:
+                print(f" - {e}")
+            return False
+
+    except Exception as e:
+        print(f"Error validating gauge calibration: {e}")
+        return False
+        
     return True

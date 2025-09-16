@@ -20,8 +20,14 @@ from data_models import YoloDetection, ArucoDetection
 # Store last 5 gauge readings for smoothing
 _last_readings = collections.deque(maxlen=5)
 
-# Create ArUco dictionary and detector with default parameters
+# Create ArUco dictionary and detector with enhanced parameters
 _aruco_params = cv2.aruco.DetectorParameters()
+# Improve ArUco detection parameters
+_aruco_params.adaptiveThreshWinSizeMin = 3
+_aruco_params.adaptiveThreshWinSizeMax = 23
+_aruco_params.adaptiveThreshWinSizeStep = 2
+_aruco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+_aruco_params.cornerRefinementWinSize = 5
 _aruco_detector = cv2.aruco.ArucoDetector(config.ARUCO_DICT, _aruco_params)
 
 _ARUCO_OBJ_PTS = None
@@ -62,10 +68,6 @@ def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
     # Centre of Needle_Tip bounding box
     tx = (tip.box[0] + tip.box[2]) / 2.0
     ty = (tip.box[1] + tip.box[3]) / 2.0
-    
-    # TESTING: Top-left corner of Needle_Tip bounding box
-    # tx = tip.box[0]  # Left edge (xmin)
-    # ty = tip.box[1]  # Top edge (ymin)
 
     # Angle in image plane: 0° along +X, increasing counter‑clockwise
     angle_deg = (math.degrees(math.atan2(cy - ty, tx - cx)) + 360.0) % 360.0
@@ -85,8 +87,9 @@ def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
     # Apply smoothing (average of 5 most recent readings)
     global _last_readings
     _last_readings.append(raw_pressure)
-
-    return sum(_last_readings) / len(_last_readings) + config.GAUGE_READING_OFFSET
+    average_pressure = sum(_last_readings) / len(_last_readings)
+    
+    return average_pressure + config.GAUGE_READING_OFFSET
 
 
 def detect_aruco_markers(frame: np.ndarray,
@@ -111,32 +114,45 @@ def detect_aruco_markers(frame: np.ndarray,
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
 
+    # The detectMarkers function signature changed in OpenCV 4.7.
+    # We use a try-except block to handle both new and old versions.
     try:
+        # OpenCV 4.7+ returns corners, ids, rejected
         corners, ids, _ = _aruco_detector.detectMarkers(gray)
+    except ValueError:
+        # Older OpenCV versions returned corners, ids, rejected, recovered
+        corners, ids, _, _ = _aruco_detector.detectMarkers(gray)
     except Exception:
-        # Fallback old API
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, config.ARUCO_DICT)
+        # Fallback to the older cv2.aruco.detectMarkers function if the detector object fails
+        corners, ids, _ = cv2.aruco.detectMarkers(gray, config.ARUCO_DICT, parameters=_aruco_params)
+
 
     detections: List[ArucoDetection] = []
     if ids is None or len(ids) == 0:
-        return detections
+        return detections, None, None
 
-    use_builtin = hasattr(cv2.aruco, "estimatePoseSingleMarkers")
+    # The estimatePoseSingleMarkers function is reliable and preferred.
+    # We solvePnP manually only as a fallback.
+    use_builtin_pose_estimator = hasattr(cv2.aruco, "estimatePoseSingleMarkers")
+    s = float(config.ARUCO_MARKER_SIZE_M)
 
-    for idx, marker_id in enumerate(ids):
-        c = corners[idx].reshape(-1, 2).astype(np.float32)
+    for i, marker_id in enumerate(ids):
+        marker_corners = corners[i].reshape(-1, 2).astype(np.float32)
         try:
-            if use_builtin:
-                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers([c], s, camera_matrix, dist_coeffs)
-                rvec = rvecs[0][0]
-                tvec = tvecs[0][0]
+            if use_builtin_pose_estimator:
+                # Use the recommended built-in function for pose estimation
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    [marker_corners], s, camera_matrix, dist_coeffs
+                )
+                rvec, tvec = rvecs[0][0], tvecs[0][0]
             else:
-                flag = (cv2.SOLVEPNP_IPPE_SQUARE
-                        if hasattr(cv2, "SOLVEPNP_IPPE_SQUARE")
-                        else cv2.SOLVEPNP_ITERATIVE)
-                ok, rvec, tvec = cv2.solvePnP(_ARUCO_OBJ_PTS, c, camera_matrix, dist_coeffs, flags=flag)
-                if not ok:
+                # Manual fallback using solvePnP if the built-in is not available
+                ret, rvec, tvec = cv2.solvePnP(
+                    _ARUCO_OBJ_PTS, marker_corners, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_IPPE_SQUARE
+                )
+                if not ret:
                     continue
+            
             detections.append(ArucoDetection(
                 marker_id=int(marker_id[0]),
                 position=tuple(map(float, tvec)),
@@ -145,7 +161,7 @@ def detect_aruco_markers(frame: np.ndarray,
         except Exception:
             continue
 
-    return detections
+    return detections, corners, ids
 
 def draw_detections_on_frame(frame: np.ndarray,
                              detections: List[YoloDetection],
@@ -170,42 +186,23 @@ def draw_detections_on_frame(frame: np.ndarray,
                     (x1, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 
                     config.DETECTION_TEXT_SIZE, colour, config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
 
+    # Display ArUco marker ID and position
     for idx, marker in enumerate(aruco_markers):
-        text = f"ID {marker.marker_id}"
-        cv2.putText(out, text,
-                    (10, 20 + idx * 18), cv2.FONT_HERSHEY_SIMPLEX,
-                    config.DETECTION_TEXT_SIZE * 0.3, (0, 255, 255), config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
+        pos = marker.position
+        text = f"ID {marker.marker_id}: ({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) m"
+        cv2.putText(out, text, (10, 120 + idx * 60), cv2.FONT_HERSHEY_SIMPLEX, 
+                    config.DETECTION_TEXT_SIZE * 0.5, (0, 255, 255), config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
+    
     return out
 
-def validate_gauge_calibration() -> bool:
-    """Validate gauge calibration parameters."""
-    try:
-        # Check angle range
-        angle_range = abs(config.GAUGE_MAX_ANGLE_DEG - config.GAUGE_MIN_ANGLE_DEG)
-        if angle_range < 90 or angle_range > 300:
-            print(f"Warning: Unusual gauge angle range: {angle_range:.1f} degrees")
-            return False
-            
-        # Check pressure range
-        pressure_range = config.GAUGE_MAX_PRESSURE_BAR - config.GAUGE_MIN_PRESSURE_BAR
-        if pressure_range <= 0:
-            print("Error: Invalid pressure range")
-            return False
-            
-        print("✓ Gauge calibration valid")
-        return True
-        
-    except Exception as e:
-        print(f"Error validating gauge calibration: {e}")
-        return False
 
-def show_inference_visualisation(frame, detections, aruco_markers, gauge_pressure,
+def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners, aruco_ids, gauge_pressure,
                                  camera_matrix=None, dist_coeffs=None):
     """Shows a visualisation window for test mode; draws pose axes if intrinsics are given."""
     display_frame = draw_detections_on_frame(frame, detections, aruco_markers)
     
     if config.SHOW_GAUGE_OVERLAY:
-        display_frame = draw_angle_debug(display_frame, detections)
+        display_frame = draw_gauge_debug(display_frame, detections)
     
     h, w = frame.shape[:2]
     
@@ -216,114 +213,82 @@ def show_inference_visualisation(frame, detections, aruco_markers, gauge_pressur
         text_x = w - text_size[0] - 10  # 10 pixels from right edge
         cv2.putText(display_frame, text,
                     (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                    (0, 255, 0), config.DETECTION_TEXT_THICKNESS)
+                    (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
     
     # Keep detection count in top left corner
     cv2.putText(display_frame, f"Detections: {len(detections)}",
                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
+                (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
 
-    # Optional pose axes
-    if camera_matrix is not None and dist_coeffs is not None and len(aruco_markers):
-        axis_len = config.ARUCO_MARKER_SIZE_M * 0.5  # half marker size
-        axis_obj = np.float32([
-            [0, 0, 0],
-            [axis_len, 0, 0],
-            [0, axis_len, 0],
-            [0, 0, axis_len]
-        ])
-        for m in aruco_markers:
-            try:
-                rvec = np.array(m.orientation, dtype=np.float32).reshape(3, 1)
-                tvec = np.array(m.position, dtype=np.float32).reshape(3, 1)
-                imgpts, _ = cv2.projectPoints(axis_obj, rvec, tvec, camera_matrix, dist_coeffs)
-                imgpts = imgpts.reshape(-1, 2).astype(int)
-                o = tuple(imgpts[0])
-                cv2.line(display_frame, o, tuple(imgpts[1]), (0, 0, 255), 2)   # X (red)
-                cv2.line(display_frame, o, tuple(imgpts[2]), (0, 255, 0), 2)   # Y (green)
-                cv2.line(display_frame, o, tuple(imgpts[3]), (255, 0, 0), 2)   # Z (blue)
-            except Exception:
-                continue
+    # Draw ArUco bounding boxes and pose axes
+    if aruco_corners is not None and aruco_ids is not None:
+        # The detection and display frames are now the same, so no scaling is needed.
+        cv2.aruco.drawDetectedMarkers(display_frame, aruco_corners, aruco_ids)
+        
+        if camera_matrix is not None and dist_coeffs is not None and len(aruco_markers) > 0:
+            # Get rvecs and tvecs for drawing the axes
+            rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                aruco_corners, config.ARUCO_MARKER_SIZE_M, camera_matrix, dist_coeffs
+            )
+            for rvec, tvec in zip(rvecs, tvecs):
+                cv2.drawFrameAxes(display_frame, camera_matrix, dist_coeffs, rvec, tvec, 0.1, 3)
 
     cv2.imshow(config.TEST_MODE_WINDOW_NAME, display_frame)
     wait_ms = 0 if not config.TEST_MODE_AUTO_ADVANCE else config.TEST_MODE_DISPLAY_TIME
     key = cv2.waitKey(wait_ms) & 0xFF
+    
     return key
 
 
 # VISUALISE GAUGE ANGLE CALCULATION AND MIN/MAX LIMITS (set SHOW_GAUGE_OVERLAY=True in config.py)
-def debug_gauge_angles(detections: List[YoloDetection]) -> Optional[dict]:
-    """Debug function to analyse gauge angle calculations."""
+def draw_gauge_debug(frame: np.ndarray, detections: List[YoloDetection]) -> np.ndarray:
+    """Draw gauge debugging information including angle lines and current pressure."""
     centres = sorted((d for d in detections if d.class_name == "Gauge_Centre"),
                      key=lambda d: d.confidence, reverse=True)
     tips = sorted((d for d in detections if d.class_name == "Needle_Tip"),
                   key=lambda d: d.confidence, reverse=True)
     
     if not centres or not tips:
-        return None
+        return frame
     
-    centre, tip = centres[0], tips[0]
-    cx = (centre.box[0] + centre.box[2]) / 2.0
-    cy = (centre.box[1] + centre.box[3]) / 2.0
-    tx = (tip.box[0] + tip.box[2]) / 2.0
-    ty = (tip.box[1] + tip.box[3]) / 2.0
+    # Copy frame to avoid modifying the original
+    debug_frame = frame.copy()
+    h, w = debug_frame.shape[:2]
+    
+    # Calculate positions and angles
+    centre = centres[0]
+    tip = tips[0]
+    cx = int((centre.box[0] + centre.box[2]) / 2.0 * w)
+    cy = int((centre.box[1] + centre.box[3]) / 2.0 * h)
+    tx = int((tip.box[0] + tip.box[2]) / 2.0 * w)
+    ty = int((tip.box[1] + tip.box[3]) / 2.0 * h)
     
     angle_deg = (math.degrees(math.atan2(cy - ty, tx - cx)) + 360.0) % 360.0
     
-    return {
-        "needle_angle": angle_deg,
-        "min_angle": config.GAUGE_MIN_ANGLE_DEG,
-        "max_angle": config.GAUGE_MAX_ANGLE_DEG,
-        "sweep_deg": config.GAUGE_SWEEP_DEG,
-        "centre_pos": (cx, cy),
-        "tip_pos": (tx, ty)
-    }
-
-def draw_angle_debug(frame: np.ndarray, detections: List[YoloDetection]) -> np.ndarray:
-    """Draw angle lines for calibration debugging."""
-    debug_info = debug_gauge_angles(detections)
-    if not debug_info:
-        return frame
-    
-    h, w = frame.shape[:2]
-    cx = int(debug_info["centre_pos"][0] * w)
-    cy = int(debug_info["centre_pos"][1] * h)
-    tx = int(debug_info["tip_pos"][0] * w)
-    ty = int(debug_info["tip_pos"][1] * h)
-    
     # Draw needle line
-    cv2.line(frame, (cx, cy), (tx, ty), (0, 255, 255), 3)
-    
-    # Draw lines to min max points
-    radius = 300
+    cv2.line(debug_frame, (cx, cy), (tx, ty), (0, 255, 255), 3)
     
     # Draw min angle line (0 bar)
     min_rad = math.radians(config.GAUGE_MIN_ANGLE_DEG)
-    min_x = int(cx + radius * math.cos(min_rad))
-    min_y = int(cy - radius * math.sin(min_rad))  # Note: Y is flipped
-    cv2.line(frame, (cx, cy), (min_x, min_y), (0, 255, 0), 2)
-    
-    # Position text below the end of the min angle line
-    text_offset_y = 40  # Pixels below the line end
-    cv2.putText(frame, "0 bar", (min_x - 60, min_y + text_offset_y), 
+    min_x = int(cx + 300 * math.cos(min_rad))
+    min_y = int(cy - 300 * math.sin(min_rad))  # Note: Y is flipped
+    cv2.line(debug_frame, (cx, cy), (min_x, min_y), (0, 255, 0), 2)
+    cv2.putText(debug_frame, "0 bar", (min_x - 60, min_y + 40), 
                 cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, (0, 255, 0), 2)
     
     # Draw max angle line (10 bar)
     max_rad = math.radians(config.GAUGE_MAX_ANGLE_DEG)
-    max_x = int(cx + radius * math.cos(max_rad))
-    max_y = int(cy - radius * math.sin(max_rad))  # Note: Y is flipped
-    cv2.line(frame, (cx, cy), (max_x, max_y), (0, 0, 255), 2)
-    
-    # Position text below the end of the max angle line
-    cv2.putText(frame, "10 bar", (max_x, max_y + text_offset_y), 
+    max_x = int(cx + 300 * math.cos(max_rad))
+    max_y = int(cy - 300 * math.sin(max_rad))  # Note: Y is flipped
+    cv2.line(debug_frame, (cx, cy), (max_x, max_y), (0, 0, 255), 2)
+    cv2.putText(debug_frame, "10 bar", (max_x, max_y + 40), 
                 cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, (0, 0, 255), 2)
     
     # Show current needle angle in top right corner
-    text = f"Angle: {debug_info['needle_angle']:.1f} deg"
+    text = f"Angle: {angle_deg:.1f} deg"
     text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, config.DETECTION_TEXT_THICKNESS)[0]
     text_x = w - text_size[0] - 10  # 10 pixels from right edge
-    cv2.putText(frame, text,
-                (text_x, 150), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
+    cv2.putText(debug_frame, text, (text_x, 150), cv2.FONT_HERSHEY_SIMPLEX, 
+                config.DETECTION_TEXT_SIZE, (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
     
-    return frame
+    return debug_frame

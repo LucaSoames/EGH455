@@ -36,8 +36,6 @@ class DrillController:
         self.drilling_complete = False
         self.pwm = None
         self.drill_timer = None
-        self.last_pwm_duty = None  # Track last duty cycle to prevent unnecessary updates
-        self.pwm_running = False  # Track if PWM is actively running
         
         # Readings buffer for stability
         self.reading_buffer: Deque[float] = deque(maxlen=3)  # Store 3 consecutive readings
@@ -47,14 +45,15 @@ class DrillController:
             try:
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setwarnings(False)
-                # Initialize with explicit LOW to prevent glitches
+                # Initialise with explicit LOW to prevent glitches
                 GPIO.setup(config.DRILL_GPIO_PIN, GPIO.OUT, initial=GPIO.LOW)
                 
                 # Set up PWM for servo control
                 self.pwm = GPIO.PWM(config.DRILL_GPIO_PIN, config.PWM_FREQUENCY)
-                self.pwm.start(config.STOP_DUTY)  # Start in stopped position
-                self.last_pwm_duty = config.STOP_DUTY  # Initialize tracking
+                # Move to the stop position on initialisation, then stop the signal.
+                self.pwm.start(config.STOP_DUTY)
                 time.sleep(0.5)  # Give servo time to move to initial position
+                self.pwm.ChangeDutyCycle(0) # Stop sending signal to prevent jitter
                 
                 print(f"✓ GPIO pin {config.DRILL_GPIO_PIN} initialised with PWM for drilling")
             except RuntimeError as e:
@@ -64,23 +63,15 @@ class DrillController:
                 print(f"GPIO init error: {e}")
                 self.gpio_available = False
     
-    def _set_pwm_duty(self, duty_cycle: float) -> None:
-        """Set PWM duty cycle only if it has changed to minimize servo jitter."""
-        if self.pwm and self.last_pwm_duty != duty_cycle:
-            # Start PWM if not running
-            if not self.pwm_running:
-                self.pwm.start(duty_cycle)
-                self.pwm_running = True
-            else:
-                self.pwm.ChangeDutyCycle(duty_cycle)
-            
-            self.last_pwm_duty = duty_cycle
-            # Allow time for servo to move to position
-            time.sleep(0.1)
-            
-            # Stop sending PWM after setting position to prevent jitter
-            if not self.drill_active:
-                self.pwm.ChangeDutyCycle(0)  # Stop sending pulses
+    def _set_pwm_duty(self, duty_cycle: float, duration: float = 0.5) -> None:
+        """
+        Set PWM duty cycle for a short duration to move the servo, then stop the signal.
+        This prevents servo jitter during idle periods.
+        """
+        if self.pwm:
+            self.pwm.ChangeDutyCycle(duty_cycle)
+            time.sleep(duration)  # Allow time for servo to move to position
+            self.pwm.ChangeDutyCycle(0) # Stop sending signal
 
     def control_drill(self, gauge_reading: Optional[float]):
         """Control drill activation based on pressure reading using PWM."""
@@ -117,9 +108,9 @@ class DrillController:
         """Start the drilling sequence that runs for a fixed duration."""
         try:
             if self.pwm:
-                # Activate drill - use our method to prevent duplicate commands
-                self._set_pwm_duty(config.ACTIVE_DUTY)
+                # Activate drill
                 print(f"DRILL ACTIVATED - Starting {config.DRILL_DURATION_SEC} second drilling sequence")
+                self._set_pwm_duty(config.ACTIVE_DUTY)
                 
                 # Set up a timer to stop drilling after fixed duration
                 self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._complete_drilling)
@@ -133,13 +124,9 @@ class DrillController:
         """Complete the drilling sequence and reset to stopped position."""
         try:
             if self.pwm:
-                # Stop drill - use our method to prevent duplicate commands
-                self._set_pwm_duty(config.STOP_DUTY)
+                # Stop drill
                 print("DRILL DEACTIVATED - Drilling sequence completed")
-                
-                # Stop PWM signal completely after a short delay
-                time.sleep(0.5)  # Give servo time to reach position
-                self.pwm.ChangeDutyCycle(0)  # Stop sending pulses
+                self._set_pwm_duty(config.STOP_DUTY)
                 
                 # Mark drilling as complete for this cycle
                 self.drilling_complete = True
@@ -162,11 +149,9 @@ class DrillController:
                     self.drill_timer.cancel()
                 
                 if self.pwm:
-                    self._set_pwm_duty(config.STOP_DUTY)  # Stop before cleanup
-                    time.sleep(0.5)  # Give servo time to stop
-                    self.pwm.ChangeDutyCycle(0)  # Stop sending pulses
+                    # Ensure servo is in stop position before cleanup
+                    self._set_pwm_duty(config.STOP_DUTY)
                     self.pwm.stop()
-                    self.pwm_running = False
                 
                 GPIO.cleanup(config.DRILL_GPIO_PIN)  # Only clean up our specific pin
                 print("Drill GPIO resources released")

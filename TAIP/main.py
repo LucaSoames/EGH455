@@ -215,12 +215,27 @@ class MainApp:
 
             # ArUco detection (isolated to avoid fatal loop errors)
             try:
-                aruco_detections = detect_aruco_markers(
-                    mono_frame, config.CAMERA_MATRIX, config.DISTORTION_COEFFS
+                # When visualising, we must detect on the RGB frame to ensure coordinates match.
+                # Otherwise, we can use the configured source (e.g., the mono camera).
+                if config.SHOW_LIVE_VISUALISATION and rgb_frame is not None:
+                    aruco_frame = rgb_frame
+                    matrix = config.CAMERA_MATRIX_RGB
+                    coeffs = config.DISTORTION_COEFFS_RGB
+                else:
+                    # Use the frame source defined in the config file
+                    if config.CAMERA_ARUCO_SOURCE.upper() == 'RGB':
+                        aruco_frame = rgb_frame
+                    else:
+                        aruco_frame = mono_frame
+                    matrix = config.CAMERA_MATRIX
+                    coeffs = config.DISTORTION_COEFFS
+                    
+                aruco_detections, aruco_corners, aruco_ids = detect_aruco_markers(
+                    aruco_frame, matrix, coeffs
                 )
             except Exception as e:
                 print(f"ArUco error: {e}")
-                aruco_detections = []
+                aruco_detections, aruco_corners, aruco_ids = [], None, None
 
             gauge_reading = calculate_gauge_reading(yolo_detections)
             env_data = self.env_sensors.get_readings()
@@ -238,23 +253,27 @@ class MainApp:
             self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections,
                                             env_data, gauge_reading, bool(self.file_processor))
 
-            # Show visualization for file processing mode or if live visualization enabled
-            if self.file_processor or (config.SHOW_LIVE_VISUALIZATION and self.camera):
+            # Show visualisation for file processing mode or if live visualisation enabled
+            if self.file_processor or (config.SHOW_LIVE_VISUALISATION and self.camera):
+                # The frame used for ArUco detection is now the same as the display frame,
+                # so no special scaling is needed. We can remove the aruco_source_shape argument.
                 key = show_inference_visualisation(
-                    rgb_frame, yolo_detections, aruco_detections, gauge_reading,
-                    config.CAMERA_MATRIX, config.DISTORTION_COEFFS
+                    rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
+                    config.CAMERA_MATRIX_RGB, config.DISTORTION_COEFFS_RGB
                 )
                 if key == ord('q'):
                     print("Quit requested by user")
                     break
                 if frame_count % 1 == 0:
                     pressure_txt = f"{gauge_reading:.2f}" if gauge_reading is not None else "N/A"
-                    print(f"Frame {frame_count}: {len(yolo_detections)} detections, pressure: {pressure_txt} bar")
+                    print(f"Frame {frame_count}: {len(yolo_detections)} detections, {len(aruco_detections)} markers, pressure: {pressure_txt} bar")
     
-            # Reset drill state if needed (e.g., when gauge pressure exceeds threshold again)
-            # if (self.drill_controller.drilling_complete and
-            #     (gauge_reading is None or gauge_reading >= config.DRILL_PRESSURE_THRESHOLD + config.GAUGE_READING_OFFSET)):
-            #     self.drill_controller.reset_drill_state()
+            # Reset drill state if needed (when pressure is back above threshold + margin)
+            if (self.drill_controller.drilling_complete and 
+                gauge_reading is not None and 
+                gauge_reading >= config.DRILL_PRESSURE_THRESHOLD + 2.0):
+                self.drill_controller.reset_drill_state()
+                print(f"Drill reset: pressure now {gauge_reading:.2f} bar (above threshold)")
                 
             time.sleep(0.01)  # Small sleep to reduce CPU hogging
 

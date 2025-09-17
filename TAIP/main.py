@@ -9,18 +9,20 @@ data, communicates with the Ground Control Station (GCS), and manages the
 local LCD display.
 """
 
+import os
+os.environ['QT_QPA_PLATFORM'] = 'xcb' # Set the Qt platform plugin before importing cv2 to supress Wayland/XCB warnings
+
 import time
 import cv2
-import numpy as np
 import socket
 import traceback
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional
 from pathlib import Path
 
 # Import our custom modules
 import config
-from data_models import PayloadData, YoloDetection, ArucoDetection, EnvironmentalData
+from data_models import PayloadData, EnvironmentalData
 from oak_camera import OakCamera
 from vision_processing import (calculate_gauge_reading, detect_aruco_markers,
                                show_inference_visualisation)
@@ -36,8 +38,9 @@ try:
     from PIL import Image, ImageDraw, ImageFont
     from fonts.ttf import RobotoMedium as UserFont
     IS_ENVIRO_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     print("WARNING: Enviro+ libraries not found. Running without LCD/sensor support.")
+    print(f" -> Import error detail: {e}")
     IS_ENVIRO_AVAILABLE = False
 
 
@@ -215,24 +218,25 @@ class MainApp:
 
             # ArUco detection (isolated to avoid fatal loop errors)
             try:
-                # When visualising, we must detect on the RGB frame to ensure coordinates match.
-                # Otherwise, we can use the configured source (e.g., the mono camera).
-                if config.SHOW_LIVE_VISUALISATION and rgb_frame is not None:
+                # When visualising, we MUST detect on the same frame being displayed.
+                # The rgb_frame is now the passthrough frame from the YOLO node, which is perfect.
+                if (config.SHOW_LIVE_VISUALISATION or self.file_processor) and rgb_frame is not None:
                     aruco_frame = rgb_frame
                     matrix = config.CAMERA_MATRIX_RGB
                     coeffs = config.DISTORTION_COEFFS_RGB
+                # Headless operation can use the configured source
                 else:
-                    # Use the frame source defined in the config file
-                    if config.CAMERA_ARUCO_SOURCE.upper() == 'RGB':
-                        aruco_frame = rgb_frame
-                    else:
-                        aruco_frame = mono_frame
+                    aruco_frame = mono_frame if config.CAMERA_ARUCO_SOURCE.upper() == 'LEFT' else rgb_frame
                     matrix = config.CAMERA_MATRIX
                     coeffs = config.DISTORTION_COEFFS
                     
-                aruco_detections, aruco_corners, aruco_ids = detect_aruco_markers(
-                    aruco_frame, matrix, coeffs
-                )
+                if aruco_frame is not None:
+                    aruco_detections, aruco_corners, aruco_ids = detect_aruco_markers(
+                        aruco_frame, matrix, coeffs
+                    )
+                else:
+                    aruco_detections, aruco_corners, aruco_ids = [], None, None
+
             except Exception as e:
                 print(f"ArUco error: {e}")
                 aruco_detections, aruco_corners, aruco_ids = [], None, None
@@ -255,8 +259,7 @@ class MainApp:
 
             # Show visualisation for file processing mode or if live visualisation enabled
             if self.file_processor or (config.SHOW_LIVE_VISUALISATION and self.camera):
-                # The frame used for ArUco detection is now the same as the display frame,
-                # so no special scaling is needed. We can remove the aruco_source_shape argument.
+                # The frame for visualisation is the passthrough frame, which matches YOLO and ArUco coordinates.
                 key = show_inference_visualisation(
                     rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
                     config.CAMERA_MATRIX_RGB, config.DISTORTION_COEFFS_RGB

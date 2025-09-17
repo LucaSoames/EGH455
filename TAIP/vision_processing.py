@@ -213,12 +213,12 @@ def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners
         text_x = w - text_size[0] - 10  # 10 pixels from right edge
         cv2.putText(display_frame, text,
                     (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                    (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
+                    (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
     
     # Keep detection count in top left corner
     cv2.putText(display_frame, f"Detections: {len(detections)}",
                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                (0, 0, 0), config.DETECTION_TEXT_THICKNESS)
+                (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
 
     # Draw ArUco bounding boxes and pose axes
     if aruco_corners is not None and aruco_ids is not None:

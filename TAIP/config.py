@@ -46,8 +46,8 @@ BLOB_PATH = MODEL_DIR / f"{BLOB_NAME}.blob"
 CONFIG_PATH = MODEL_DIR / f"{BLOB_NAME}.json"
 
 # --- Visualisation Configuration ---
-DETECTION_TEXT_SIZE = 2.0  # Font scale for detection labels
-DETECTION_TEXT_THICKNESS = 4  # Text thickness for better visibility
+DETECTION_TEXT_SIZE = 1.0  # Font scale for detection labels
+DETECTION_TEXT_THICKNESS = 2  # Text thickness for better visibility
 DETECTION_COLOURS = {
     "Valve_Open": (0, 255, 0),      # Green
     "Valve_Closed": (0, 0, 255),    # Red
@@ -74,7 +74,7 @@ REQUEST_TIMEOUT = 2.0
 #   GAUGE_MIN_ANGLE_DEG -> GAUGE_MIN_PRESSURE_BAR (e.g. 225° = 0 bar)
 #   GAUGE_MAX_ANGLE_DEG -> GAUGE_MAX_PRESSURE_BAR (e.g. -45° (315°) = 10 bar)
 # The needle sweeps CLOCKWISE from min->max over (min - max) % 360 degrees.
-GAUGE_READING_OFFSET = 0.45 # Offset to add to gauge reading (bar) 
+GAUGE_READING_OFFSET = 0.045 # Offset to add to gauge reading (bar) 
 GAUGE_MIN_ANGLE_DEG = 222.0
 GAUGE_MAX_ANGLE_DEG = -48.0
 GAUGE_MIN_PRESSURE_BAR = 0.0
@@ -85,9 +85,9 @@ SHOW_GAUGE_OVERLAY = True  # Overlay gauge calibration on output image
 
 # --- Drilling Subsystem Configuration ---
 DRILL_GPIO_PIN = 13
-DRILL_PRESSURE_THRESHOLD = 4.0  # Activate drill below this pressure
+DRILL_PRESSURE_THRESHOLD = 2.0  # Activate drill below this pressure
 DRILL_DURATION_SEC = 10.0       # Duration to run drill once activated
-DRILL_TRIGGER_COUNT = 5         # Hysteresis parameter (consecutive readings below-threshold required to trigger)
+DRILL_TRIGGER_COUNT = 3         # Hysteresis parameter (consecutive readings required to trigger)
 PWM_FREQUENCY = 50              # Hz
 STOP_DUTY = 7.5                 # ~1.5ms pulse - stop
 ACTIVE_DUTY = 2.5               # ~0.5ms pulse - drilling (CCW)
@@ -99,7 +99,7 @@ ARUCO_MARKER_SIZE_M = 0.20  # Physical size of markers in metres
 # --- Select which camera sensor to use for ArUco pose estimation ---
 #   'RGB'  → use the OAK-D colour camera (CAM_A)
 #   'LEFT' → use the left mono camera (CAM_B)
-CAMERA_ARUCO_SOURCE = 'LEFT'   # 'LEFT' or 'RGB'
+CAMERA_ARUCO_SOURCE = 'RGB'   # 'LEFT' or 'RGB'
 
 # --- Camera Calibration (RGB camera, CAM_A socket) ---
 CAMERA_MATRIX_RGB = np.array([

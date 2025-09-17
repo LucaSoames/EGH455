@@ -36,9 +36,15 @@ class OakCamera:
         try:
             self.device = dai.Device(self.pipeline)
             print("OAK-D Lite connected successfully.")
+            # Create output queues
             self._rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
             self._mono_queue = self.device.getOutputQueue(name="mono", maxSize=4, blocking=False)
             self._nn_queue = self.device.getOutputQueue(name="nn", maxSize=4, blocking=False)
+            self._passthrough_queue = self.device.getOutputQueue(name="passthrough", maxSize=4, blocking=False)
+
+            # After starting the pipeline, wait a moment for auto-exposure to settle, then lock it.
+            time.sleep(2) # Wait 2 seconds
+
             self._running = True
             self._thread = threading.Thread(target=self._thread_loop, daemon=True)
             self._thread.start()
@@ -65,39 +71,52 @@ class OakCamera:
         pipeline = dai.Pipeline()
 
         cam_rgb = pipeline.createColorCamera()
-        mono_cam = pipeline.createMonoCamera()
-        yolo_net = pipeline.createYoloDetectionNetwork()
+        mono_cam = pipeline.createMonoCamera() 
         xout_rgb = pipeline.createXLinkOut()
         xout_mono = pipeline.createXLinkOut()
         xout_nn = pipeline.createXLinkOut()
+        xout_passthrough = pipeline.createXLinkOut() # Create passthrough output
 
         xout_rgb.setStreamName("rgb")
         xout_mono.setStreamName("mono")
         xout_nn.setStreamName("nn")
+        xout_passthrough.setStreamName("passthrough") # Name the passthrough stream
 
-        # RGB camera → YOLO input + passthrough for visualisation
+        # --- Camera Control Configuration ---
+        # Create a control input to adjust camera settings on the fly
+        control_in = pipeline.createXLinkIn()
+        control_in.setStreamName('control')
+        control_in.out.link(cam_rgb.inputControl)
+
+        # --- RGB Camera Configuration ---
         cam_rgb.setPreviewSize(self.model_input_size)
         cam_rgb.setInterleaved(False)
         cam_rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
         cam_rgb.setFps(config.CAMERA_FPS)
-        cam_rgb.preview.link(yolo_net.input)
-        yolo_net.passthrough.link(xout_rgb.input)
+        cam_rgb.preview.link(xout_rgb.input)
 
-        # Mono camera for ArUco
-        mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B)
+        # --- Mono Camera Configuration ---
+        mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B) # Use left camera
         mono_cam.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
         mono_cam.setFps(config.CAMERA_FPS)
-        mono_cam.out.link(xout_mono.input)
+        mono_cam.out.link(xout_mono.input) # This line is crucial
 
-        # On-device YOLOv8 inference
-        nn_meta = self.model_config['nn_config']['NN_specific_metadata']
+        # YOLO network setup
+        yolo_net = pipeline.createYoloDetectionNetwork()
         yolo_net.setBlobPath(str(config.BLOB_PATH))
         yolo_net.setConfidenceThreshold(config.CONFIDENCE_THRESHOLD)
         yolo_net.setIouThreshold(config.IOU_THRESHOLD)
+        nn_meta = self.model_config['nn_config']['NN_specific_metadata']
         yolo_net.setNumClasses(nn_meta['classes'])
         yolo_net.setCoordinateSize(nn_meta['coordinates'])
         yolo_net.setNumInferenceThreads(2)
+        
+        # Link RGB preview to YOLO input
+        cam_rgb.preview.link(yolo_net.input)
+        
+        # Link YOLO outputs
         yolo_net.out.link(xout_nn.input)
+        yolo_net.passthrough.link(xout_passthrough.input) # Link passthrough to its output
 
         return pipeline
 
@@ -105,34 +124,37 @@ class OakCamera:
         """The main loop for the background thread to fetch data from the camera."""
         while self._running:
             # Get the raw data from the queues
-            in_rgb = self._rgb_queue.tryGet()
+            in_rgb = self._rgb_queue.tryGet() # This is still useful for other purposes if needed
             in_mono = self._mono_queue.tryGet()
             in_nn = self._nn_queue.tryGet()
+            in_passthrough = self._passthrough_queue.tryGet() # Get the passthrough frame
 
-            new_rgb = None
-            new_mono = None
-            new_detections = []
-
-            if in_rgb: 
-                new_rgb = in_rgb.getCvFrame()
-            if in_mono: 
-                new_mono = in_mono.getCvFrame()
-            if in_nn:
-                new_detections = [YoloDetection(self.class_names[d.label], d.confidence, (d.xmin, d.ymin, d.xmax, d.ymax)) for d in in_nn.detections]
-            
-            # Atomically update the shared state
             with self._lock:
-                if new_rgb is not None: 
-                    self.latest_rgb_frame = new_rgb
-                if new_mono is not None: 
-                    self.latest_mono_frame = new_mono
-                # Always update detections, even if empty, to clear old ones
-                self.latest_detections = new_detections
-            
-            # Yield CPU to other processes
+                if in_passthrough is not None:
+                    # The passthrough frame is the one used for NN inference, so we use it for visualisation
+                    self.latest_rgb_frame = in_passthrough.getCvFrame()
+
+                if in_mono is not None:
+                    self.latest_mono_frame = in_mono.getCvFrame()
+
+                if in_nn is not None:
+                    self.latest_detections = self._nn_to_yolo_detections(in_nn)
+
+            # Small sleep to prevent a tight loop from consuming 100% CPU
             time.sleep(0.001)
-            
-            
+
+    def _nn_to_yolo_detections(self, nn_data) -> List[YoloDetection]:
+        """
+        Converts the neural network output to a list of YoloDetection dataclass instances.
+
+        Args:
+            nn_data: The raw output data from the neural network.
+
+        Returns:
+            A list of YoloDetection instances with class labels and bounding boxes.
+        """
+        return [YoloDetection(self.class_names[d.label], d.confidence, (d.xmin, d.ymin, d.xmax, d.ymax)) for d in nn_data.detections]
+
     def get_latest_rgb_frame(self) -> Optional[np.ndarray]:
         """
         Get the latest RGB frame from the camera.

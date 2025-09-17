@@ -63,6 +63,11 @@ class DrillController:
                 print(f"GPIO init error: {e}")
                 self.gpio_available = False
     
+    def _set_continuous_pwm(self, duty_cycle: float) -> None:
+        """Sets a continuous PWM signal. Used to start and run the drill."""
+        if self.pwm:
+            self.pwm.ChangeDutyCycle(duty_cycle)
+
     def _set_pwm_duty(self, duty_cycle: float, duration: float = 0.5) -> None:
         """
         Set PWM duty cycle for a short duration to move the servo, then stop the signal.
@@ -79,38 +84,32 @@ class DrillController:
         if self.drilling_complete or self.drill_active:
             return
         
-        # If no valid reading, reset counter
+        # If no valid reading, we do nothing. The counter persists until a valid
+        # reading comes in that is ABOVE the threshold. This makes the trigger
+        # more robust to intermittent detection failures.
         if gauge_reading is None:
-            self.stable_threshold_count = 0
-            self.reading_buffer.clear()
             return
             
-        # Add reading to buffer
-        self.reading_buffer.append(gauge_reading)
-        
-        # Use simple average pressure from buffer
-        if len(self.reading_buffer) == self.reading_buffer.maxlen:
-            avg_pressure = sum(self.reading_buffer) / len(self.reading_buffer)
-            
-            # Check if average pressure is below threshold
-            if avg_pressure < config.DRILL_PRESSURE_THRESHOLD:
-                self.stable_threshold_count += 1
-            else:
-                self.stable_threshold_count = 0
+        # A valid reading has been received. Check if it's below the threshold.
+        if gauge_reading < config.DRILL_PRESSURE_THRESHOLD:
+            self.stable_threshold_count += 1
+        else:
+            # If the pressure is above the threshold, reset the counter.
+            self.stable_threshold_count = 0
                 
-            # Activate when we have consistent below-threshold readings
-            if (self.stable_threshold_count >= config.DRILL_TRIGGER_COUNT and 
-                    self.gpio_available and not self.drill_active):
-                self.drill_active = True
-                self._start_drilling_sequence()
+        # Activate when we have consistent below-threshold readings
+        if (self.stable_threshold_count >= config.DRILL_TRIGGER_COUNT and 
+                self.gpio_available and not self.drill_active):
+            self.drill_active = True
+            self._start_drilling_sequence()
     
     def _start_drilling_sequence(self):
         """Start the drilling sequence that runs for a fixed duration."""
         try:
             if self.pwm:
-                # Activate drill
+                # Activate drill by setting a continuous PWM signal
                 print(f"DRILL ACTIVATED - Starting {config.DRILL_DURATION_SEC} second drilling sequence")
-                self._set_pwm_duty(config.ACTIVE_DUTY)
+                self._set_continuous_pwm(config.ACTIVE_DUTY)
                 
                 # Set up a timer to stop drilling after fixed duration
                 self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._complete_drilling)
@@ -124,7 +123,7 @@ class DrillController:
         """Complete the drilling sequence and reset to stopped position."""
         try:
             if self.pwm:
-                # Stop drill
+                # Stop drill by moving to the stop position and then disabling the signal
                 print("DRILL DEACTIVATED - Drilling sequence completed")
                 self._set_pwm_duty(config.STOP_DUTY)
                 

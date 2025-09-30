@@ -1,0 +1,12 @@
+Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.144:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [28/Sep/2025 19:36:37] "GET /api/telemetry/latest HTTP/1.1" 200 -
+127.0.0.1 - - [28/Sep/2025 19:36:37] "HEAD /api/video/stream HTTP/1.1" 200 -
+127.0.0.1 - - [29/Sep/2025 18:55:43] "GET /api/telemetry/latest HTTP/1.1" 200 -
+127.0.0.1 - - [29/Sep/2025 18:55:43] "HEAD /api/video/stream HTTP/1.1" 200 -

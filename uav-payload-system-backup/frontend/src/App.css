@@ -1,0 +1,68 @@
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+.dashboard-card {
+  margin: 16px;
+  padding: 16px;
+}
+
+.map-container {
+  height: 400px;
+  width: 100%;
+  margin: 16px 0;
+}
+
+.telemetry-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.telemetry-item {
+  flex: 1;
+  min-width: 200px;
+}
+
+.mission-timeline {
+  margin: 16px 0;
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.status-active {
+  background-color: #4caf50;
+}
+
+.status-inactive {
+  background-color: #f44336;
+}
+
+.status-maintenance {
+  background-color: #ff9800;
+}
+
+.status-warning {
+  background-color: #ff5722;
+}
+
+.status-normal {
+  background-color: #4caf50;
+}

@@ -1,0 +1,42 @@
+############################
+# Core runtime dependencies #
+############################
+# OAK-D / DepthAI
+depthai>=2.18,<3
+blobconverter>=1.4.3
+
+# Computer vision
+opencv-contrib-python>=4.9,<5; sys_platform == "win32"
+# To enable cv2.imshow on Raspberry Pi Desktop, switch to non-headless build:
+# opencv-contrib-python>=4.9,<5; sys_platform == "linux"
+opencv-contrib-python-headless>=4.9,<5; sys_platform != "win32"
+numpy>=2.0,<3
+
+# Web server (Flask 3.0.x stack)
+Flask==3.0.3
+Werkzeug>=3.0,<3.1
+Jinja2>=3.1
+itsdangerous>=2.1
+click>=8.1
+
+# HTTP client
+requests>=2.31
+
+# Packaging utilities
+packaging>=24.0
+
+#########################################
+# Raspberry Pi sensor stack (Linux only) #
+#########################################
+RPi.GPIO==0.7.1; sys_platform == "linux"
+gpiod==2.3.0; sys_platform == "linux"
+gpiodevice==0.0.5; sys_platform == "linux"
+spidev==3.7; sys_platform == "linux"
+smbus2==0.5.0; sys_platform == "linux"
+enviroplus==1.0.2; sys_platform == "linux"
+bme280==0.7; sys_platform == "linux"
+ltr559==1.0.0; sys_platform == "linux"
+pms5003==1.0.1; sys_platform == "linux"
+st7735==1.0.0; sys_platform == "linux"
+i2cdevice==1.0.0; sys_platform == "linux"
+ads1015==1.0.0; sys_platform == "linux"

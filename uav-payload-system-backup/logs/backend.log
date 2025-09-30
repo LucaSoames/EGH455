@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/lucasoames/workspace/egh455/uav-payload-system/backend/run.py", line 184, in <module>
+    socketio.run(
+  File "/Users/lucasoames/workspace/egh455/uav-payload-system/.venv/lib/python3.11/site-packages/flask_socketio/__init__.py", line 640, in run
+    raise RuntimeError('The Werkzeug web server is not '
+RuntimeError: The Werkzeug web server is not designed to run in production. Pass allow_unsafe_werkzeug=True to the run() method to disable this error.

@@ -1,0 +1,245 @@
+
+
+
+
+UAVPayloadTAQ
+System Requirements
+
+	
+
+
+Prepared by			Date	___03/07/2025___
+	Fernando Vanegas, 
+Checked by			Date	___18/07/2025___
+	 Sebastien Boiteau
+Approved by			Date___18/07/2025___
+	Felipe Gonzalez, Supervisor
+Authorised for use by			Date	___18/07/2025__
+	Dr. Felipe Gonzalez, Project Coordinator
+
+
+	
+	
+
+
+
+
+
+
+This document is Copyright 2025 by the QUT.  The content of this document, except that information, which is in the public domain, is the proprietary property of the QUT and shall not be disclosed or reproduced in part or in whole other than for the purpose for which it has been prepared without the express permission of the QUT
+
+
+
+
+Revision Record
+Document Issue/Revision Status	Description of Change	Date	Approved
+2.0		18/07/25	PM
+
+ 
+Table of Contents
+
+Paragraph	Page No.
+1	Introduction	6
+1.1	Scope	6
+1.2	Background	7
+1.3	QUT Avionics Documents	8
+2	System Requirements	9
+2.1	Numbering Scheme	9
+2.2	Physical Requirements	9
+▪	REQ-M-01	9
+▪	REQ-M-02	9
+2.3	Functional Requirements	10
+▪	REQ-M-03	10
+▪	REQ-M-04	10
+▪	REQ-M-05	10
+▪	REQ-M-06	10
+▪	REQ-M-07	11
+▪	REQ-M-08	11
+▪	REQ-M-09	11
+2.4	User Requirements	11
+▪	REQ-M-10	11
+▪	REQ-M-11	12
+▪	REQ-M-12	12
+▪	REQ-M-13	12
+▪	REQ-M-14	12
+2.5	Performance Requirements	14
+▪	REQ-M-15	14
+▪	REQ-M-16	14
+▪	REQ-M-17	14
+▪	REQ-M-18	14
+▪	REQ-M-19	15
+2.6	Verification Table	16
+
+
+ 
+Definitions 
+UAVPayloadTAQ	Advanced Sensor Payload for a UAV for Soil Sampling Target Finding and Air Quality Monitoring
+UAV	Unmanned Aerial Vehicle
+QUT	Queensland University of Technology 
+GCS	Ground Control Station 
+HLO	High-Level Objectives
+PMP	Project Management Plan
+1	Introduction
+The following document outlines the system requirements of the UAVPayloadTAQ commissioned by QUT Airborne Systems Lab (ASL). It is of the utmost importance that each system requirement is met to ensure the UAV can complete its task autonomously, without any user inputs. The UAVPayloadTAQ must detect three targets: a valve (whether it is closed or open), an air pressure gauge, and ArUCO markers. It must read the current value of the gauge. Moreover, it must sample the surrounding air temperature, pressure, humidity, light, and some potentially hazardous gas levels. In addition to this, the data obtained from the onboard sensors is to be relayed and visualised on a WEB interface and a hole must be drilled to simulate the collection of a soil sample. The system requirements outlined within this document have been derived from the client's brief, and the HLOs outlined within it.
+1.1	Scope
+The objectives of this document are outlined in this section of the report. 
+●	Provide a clear definition of each of the UAVs system requirements.
+●	Ensure each system requirement is justified and traceable to either the Clients brief or HLOs specified within the client’s brief.
+●	Provide a method of verification for each system requirement.
+1.2	Background
+System requirements enable engineers to determine any fundamental, redundant or missing requirements, manage any potential changes from the stakeholders and deliver a product that is of a high standard and contains all required specifications. Detailing a comprehensive framework of system requirements minimises any potential ambiguity between each subsystem. The formulation of system requirements is designed such that each subsystem produces a detailed list of needs for their systems role, and when compiled any redundant or missing requirements can be dealt with accordingly. A comprehensive requirement list allows system engineers to foresee any potential gaps in either software or hardware, potentially saving stakeholders time and money. Hence why fundamental system requirements should be weighted heavily and not be completed with haste, as it is from this list that future work packets will be formulated. It is also an excellent way to address and adapt the stakeholder's specifications, highlight details that they may not have considered and propose further information that may affect the performance of the final product. System requirements also allow a task to be divided, allowing skilled engineers to work concurrently throughout the entire process, in turn reducing total completion time. 
+1.3	QUT Avionics Documents
+RD/1	Customer Needs 	Advanced Sensor Payload for a UAV Target Detection and Air Quality Monitoring in GPS Denied Environments UAVPayloadTAQ
+2	System Requirements
+The system requirements provided are those of all subsystems of the UAVPayloadTAQ. The requirements have been split into the following groups: physical, functional, user, and performance, and defined as either mandatory or desired. Requirements are necessary if it is needed to satisfy the HLOs specified within the client’s brief. Desired requirements improve the functionality of the system but are not necessary for the successful completion of the project. 
+2.1	Numbering Scheme
+For ease of identification, a numbering system has been developed.
+	REQ - This is a requirement derived from the client's brief and the associated HLOs
+	P - Denotes a physical requirement
+	F - Denotes a functional requirement
+	U - Denotes a user interface requirement
+	M - Denotes a performance requirement
+	01 – The numerical identifier for each requirement. 
+
+2.2	Physical Requirements
+▪	REQ-P-01
+Description: The UAVPayloadTAQ shall remain under the maximum weight of 410 g and comply with an IP41 rating. The air quality sensors must be exposed to the environment for accurate readings.
+Rationale: The UAV that will carry the payload is required to remain under the maximum take-off weight of 2.0 kg and protect the electronic components.
+Traced From: HLO-M-4, Clients Brief
+Verification: Demonstration/Measured
+______________________________________________________________________________
+▪	REQ-P-02
+Description: The payload shall incorporate a drilling mechanism capable of drilling into the simulated soil. The mechanism must produce a hole with a minimum depth of 15 mm and a diameter of 15 mm, simulating the collection of a soil sample. The hole shall remain visible in the simulated soil after drilling.
+Rationale: The payload is a device used for remote sensing, and one of its desired functions is to drill a hole to simulate the collection of a soil sample.
+Traced From: HLO-M-6
+Verification: Demonstrated
+
+2.3	Functional Requirements
+▪	REQ-F-03
+Description: The UAVPayloadTAQ must measure hazardous gases , humidity, pressure, temperature and light via onboard sensors.
+Rationale: The UAVPayloadTAQ must have an onboard sensor capable of taking accurate readings of hazardous gases, humidity, pressure, temperature and light via onboard sensors.  
+Traced from: HLO-M-1
+Verification: Demonstration
+_______________________________________________________________________________
+▪	REQ-F-04
+Description: The UAVPayloadTAQ shall communicate with a ground station computer to transmit video, target detection and air quality data.
+Rationale: The UAVPayloadTAQ is a standalone embedded system that should be adaptable to different UAV platforms.
+Traced From: HLO-M-1, HLO-M-2, HLO-M-3
+Verification: Demonstration
+_______________________________________________________________________________
+▪	REQ-F-05
+Description: The target identification system shall be capable of alerting the GCS of a target’s type.  
+Rationale: The operator needs to be alerted of target acquisition    
+Traced from: HLO-M-2, HLO-M-3
+Verification: Demonstration/simulation
+_______________________________________________________________________________
+▪	REQ-F-06
+Description: The Web Interface is required to display real time air sampling data that is recorded directly from the UAVPayloadTAQ and update dynamically throughout the duration of the flight.
+Rationale: This allows the client to obtain remote sensing data for logging.
+Traced From: HLO-M-1, HLO-M-3.
+Verification: Demonstrated
+_______________________________________________________________________________
+▪	REQ-F-07
+Description: The Web Interface is required to display the live feed of the object detector, as well as the images of the targets that are taken directly from the UAVPayloadTAQ and update every time a new picture is taken. 
+Rationale: The payload is a device that is used to do remote sensing and the data that is sensing should be available for visualisation from a ground location.
+Traced From: HLO-M-3
+Verification: Demonstrated
+_______________________________________________________________________________
+▪	REQ-F-08
+Description: The Web Interface shall be designed and run as a web server. It must be accessible by any computers on the QUT network. This shall store logged sensor data and target detections with corresponding timestamps.
+Rationale: A web interface is a common way of accessing data for a typical user of the payload.
+Traced From: HLO-M-3
+Verification: Demonstrated
+_______________________________________________________________________________
+▪	REQ-F-09
+Description: The payload shall activate the drilling mechanism to simulate the collection of a soil sample only after the UAV has landed on top of the kinetic sand and the value read from the air pressure gauge drops below a threshold of 2 bar. Once the hole is drilled, the drilling mechanism must retract to its original position.
+Rationale: The drilling mechanism can only start when it is on the ground on top of the kinetic sand and must retract to its original position.
+Traced From: HLO-M-2, HLO-M-6
+Verification: Demonstrated
+2.4	User Requirements
+▪	REQ-U-10
+Description: Preliminary designs shall be completed by week 7
+Rationale: There are time constraints. To know what parts to purchase, the preliminary designs must be completed before week 7. 
+Traced from: HLO-M-7
+Verification: Submitted documentation
+_______________________________________________________________________________
+▪	REQ-U-11
+Description: The payload shall display its IP address via the integrated Enviro sensor LCD screen.
+Rationale: To allow the GCS operator to connect using the ssh protocol while the GCS is connected to the same WiFi (LAN) network as the payload.
+Traced from: HLO-M-5
+Verification: Demonstrated
+_______________________________________________________________________________
+▪	REQ-U-12
+Description: The LCD screen shall display live feed of target detection as well as temperature readings from the Pi and the Enviro sensor board.
+Rationale: The payload is a standalone device. This display allows the operator to verify the payload is working properly before attaching to the UAV and conducting flights.
+Traced from: HLO-M-5
+Verification: Demonstrated 
+_______________________________________________________________________________
+▪	REQ-U-13
+Description: The LCD screen shall be placed on the side of the payload in order for the user to easily see its operation during flight.
+Rationale: The payload should be easy to use and contains a display that should allow the operator to verify the payload is working properly during flights.
+Traced from: HLO-M-5
+Verification: Demonstrated ______________________________________________________________________________
+▪	REQ-U-14
+Description: The developed solution shall conform to the systems engineering approach. 
+Rationale: This is a requested requirement from the customer to ensure that the UAV is designed and built to a specific standard.
+Traced from: HLO-M-7
+Verification: Submitted documentation
+_______________________________________________________________________________
+
+ 
+2.5	Performance Requirements
+▪	REQ-M-15
+Description: The system shall have logged functioning operation for a minimal period of 10 minutes prior to the acceptance test.
+Rationale: The minimal requirement of pre-mission logged flying is a request from the user.
+Traced From: HLO-M-3- Clients brief.
+Verification: Demonstration
+_______________________________________________________________________________
+▪	REQ-M-16
+Description: The UAVPayloadTAQ shall process all imagery onboard via the onboard computer and on-board camera.
+Rationale: All imagery must be processed on-board the payload, as to operate autonomously without any direct user input from the GCS.
+Traceability: HLO-M-2
+Verification: Demonstration
+_______________________________________________________________________________
+▪	REQ-M-17
+Description: The processing must be able to analyse all data acquired from the camera and sensors while the UAV moves at a maximum speed of 2 m/s.
+Rationale: The UAV will be operated such that it will move around the room with a maximum speed, and as such, the image processing must be designed to not miss any potential target locations.
+Traceability: HLO-M-2
+Verification: Demonstration
+_______________________________________________________________________________
+▪	REQ-M-18
+Description: The processing must be able to analyse all data acquired from the camera and sensors while the UAV operates at an altitude of between 1 to 3m.
+Rationale: The UAV will be operated such that it will move around the room at a set altitude, and as such, the image processing must be designed to not miss any potential target locations.
+Traceability: HLO-M-2
+Verification: Demonstration
+▪	REQ-M-19
+Description: Live data from the UAV must be made available through the web server within 4 seconds of capture.
+Rationale: Decision making systems may be integrated to use the data collected by the payload, and would require this data to be available in real-time.
+Traceability: HLO-M-1, HLO-M-2, HLO-M-3 
+Verification: Demonstration
+_______________________________________________________________________________
+
+ 
+2.6	Verification Table
+Requirements	HLO-M-1	HLO-M-2	HLO-M-3	HLO-M-4	HLO-M-5	HLO-M-6	HLO-M-7	Clients 
+Brief	PM & AQ	SAMPLING TUBE	WEB VIZ	TAQ IMG
+REQ-P-01												
+REQ-P-02												
+REQ-F-03												
+REQ-F-04												
+REQ-F-05												
+REQ-F-06												
+REQ-F-07												
+REQ-F-08												
+REQ-F-09												
+REQ-U-10												
+REQ-U-11												
+REQ-U-12												
+REQ-U-13												
+REQ-U-14												
+REQ-M-15												
+REQ-M-16												
+REQ-M-17												
+REQ-M-18												
+REQ-M-19												
+

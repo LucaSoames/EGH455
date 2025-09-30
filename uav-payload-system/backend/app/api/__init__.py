@@ -7,7 +7,6 @@ from flask import Blueprint, request, jsonify, Response
 from app import db, socketio
 from app.models import TelemetryData, UAV, User, SystemLog
 from datetime import datetime, timedelta
-import cv2
 import time
 import threading
 
@@ -56,7 +55,7 @@ def receive_telemetry():
     try:
         data = request.get_json(force=True, silent=True) or {}
 
-        # Support both flat schema and TAIP nested schema under 'environmental_data'
+    # Support both flat schema and TAIP nested schema under 'environmental_data'
         env = data.get('environmental_data') or {}
 
         # Extract environmental readings
@@ -93,8 +92,22 @@ def receive_telemetry():
         log_event('telemetry_received', 'telemetry', telemetry.id, 
                  f"Telemetry data received from UAV")
         
+        # Build broadcast payload: include DB fields plus TAIP extras (no DB migration needed)
+        event_payload = telemetry.to_dict()
+        # Pass through TAIP gauge pressure if provided
+        if 'gauge_pressure_bar' in data:
+            event_payload['gauge_pressure_bar'] = data.get('gauge_pressure_bar')
+        # Optionally include raw environmental data if provided by TAIP
+        if env:
+            event_payload['environmental_data'] = {
+                'temperature_c': env.get('temperature_c'),
+                'pressure_hpa': env.get('pressure_hpa'),
+                'humidity_rh': env.get('humidity_rh'),
+                'light_lux': env.get('light_lux'),
+            }
+        
         # Broadcast to all connected clients
-        socketio.emit('telemetry_update', telemetry.to_dict())
+        socketio.emit('telemetry_update', event_payload)
         
         return jsonify({'status': 'success', 'id': telemetry.id}), 200
         

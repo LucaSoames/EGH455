@@ -12,6 +12,7 @@ to manage, test, and deploy.
 import cv2
 import numpy as np
 from pathlib import Path
+import os
 
 # --- Project Structure ---
 PROJECT_ROOT = Path("/home/pi/EGH455")
@@ -60,13 +61,18 @@ DETECTION_COLOURS = {
 # YOLO_CLASSES = ["Gauge_Centre", "Needle_Tip", "Valve_Closed", "Valve_Open"]
 
 # --- GCS (Ground Control Station) Communication ---
-# The IP address of the laptop running the ground_station_server.py
-# GCS_LAPTOP_IP = "192.168.1.100"
-GCS_LAPTOP_IP = "127.0.0.1"
-GCS_URL = f"http://{GCS_LAPTOP_IP}:5000"
-POST_FRAME_FPS = 10
-POST_TELEM_HZ = 5
-REQUEST_TIMEOUT = 2.0
+# These can be overridden by environment variables for flexible deployment
+# Examples:
+#   export GCS_LAPTOP_IP=192.168.1.50
+#   export GCS_URL=http://192.168.1.50:5000
+#   export POST_FRAME_FPS=10
+#   export POST_TELEM_HZ=5
+#   export REQUEST_TIMEOUT=2.0
+GCS_LAPTOP_IP = os.getenv("GCS_LAPTOP_IP", "127.0.0.1")
+GCS_URL = os.getenv("GCS_URL", f"http://{GCS_LAPTOP_IP}:5000")
+POST_FRAME_FPS = float(os.getenv("POST_FRAME_FPS", 10))
+POST_TELEM_HZ = float(os.getenv("POST_TELEM_HZ", 5))
+REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", 2.0))
 
 # --- Gauge Calibration ---
 # These values map needle angles to pressure readings.

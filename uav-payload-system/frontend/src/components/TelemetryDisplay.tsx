@@ -10,6 +10,7 @@ interface TelemetryData {
   battery_level?: number;
   temperature?: number;
   humidity?: number;
+  gauge_pressure_bar?: number; // TAIP-provided gauge pressure (bar)
   status: string;
   timestamp: string;
 }
@@ -96,6 +97,11 @@ function TelemetryDisplay() {
         <div className="telemetry-item">
           <span>💧 Humidity</span>
           <strong>{telemetry.humidity?.toFixed(1) || 'N/A'}%</strong>
+        </div>
+
+        <div className="telemetry-item">
+          <span>⚙️ Gauge Pressure</span>
+          <strong>{telemetry.gauge_pressure_bar != null ? telemetry.gauge_pressure_bar.toFixed(2) : 'N/A'} bar</strong>
         </div>
         
         <div className="telemetry-item">

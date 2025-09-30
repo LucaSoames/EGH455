@@ -127,6 +127,31 @@ graph TB
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:5000
 
+### TAIP Hardware Integration
+
+The TAIP subsystem (in `../TAIP`) can stream telemetry and video into this backend:
+
+- Telemetry: TAIP posts JSON to `POST /api/telemetry`
+- Video frames: TAIP posts JPEG bytes to `POST /api/frame` and the UI streams via `GET /api/video/stream`
+
+Configure TAIP to point at the backend using environment variables (or edit `TAIP/config.py` defaults):
+
+```bash
+# On the TAIP device (Raspberry Pi)
+export GCS_LAPTOP_IP=127.0.0.1   # or your laptop IP reachable by the Pi
+export GCS_URL=http://$GCS_LAPTOP_IP:5000
+export POST_FRAME_FPS=10
+export POST_TELEM_HZ=5
+```
+
+Then run TAIP's main loop (on the Pi):
+
+```bash
+python3 TAIP/main.py
+```
+
+The dashboard will show live telemetry and render the video stream.
+
 ### Demo Credentials
 - **Admin**: admin / admin123
 - **Operator**: operator / operator123

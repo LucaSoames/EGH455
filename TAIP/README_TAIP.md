@@ -351,3 +351,16 @@ For technical support or issues:
 **Subsystem**: TAIP (Target Acquisition and Image Processing)  
 **Version**: 1.0  
 **Last Updated**: September 2025
+
+## Camera usage and ArUco pose
+- Object detection: RGB camera (OAK-D Lite preview) feeds YOLO on-device.
+- ArUco detection: LEFT mono camera (CAM_B) only in live mode for pose stability.
+- Test mode (files): ArUco runs on RGB frames using RGB intrinsics.
+- Visualisation: The main window shows the RGB frame with YOLO boxes. An inset at bottom-left shows the LEFT mono view with detected markers and pose axes drawn using LEFT intrinsics. This avoids axis scrambling from intrinsics mismatch.
+
+## Non-blocking ArUco
+ArUco detection and pose run in a background thread (ArucoWorker). The main loop never blocks on marker detection, preventing freezes.
+
+## Configuration
+- Removed camera switching flags for ArUco. LEFT mono is always used in live mode.
+- Keep both CAMERA_MATRIX_LEFT and CAMERA_MATRIX_RGB for correct intrinsics in live/test modes.

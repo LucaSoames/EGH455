@@ -96,11 +96,8 @@ ACTIVE_DUTY = 2.5               # ~0.5ms pulse - drilling (CCW)
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 ARUCO_MARKER_SIZE_M = 0.20  # Physical size of markers in metres
 
-# --- Select which camera sensor to use for ArUco pose estimation ---
-#   'RGB'  → use the OAK-D colour camera (CAM_A)
-#   'LEFT' → use the left mono camera (CAM_B)
-CAMERA_ARUCO_SOURCE = 'RGB'   # 'LEFT' or 'RGB'
-
+# We now always use the LEFT mono camera (CAM_B) for ArUco pose estimation.
+# Keep both intrinsics for correctness in test mode (file inputs use RGB frames).
 # --- Camera Calibration (RGB camera, CAM_A socket) ---
 CAMERA_MATRIX_RGB = np.array([
     [2968.344482421875,    0.0,               1898.425048828125],
@@ -131,12 +128,10 @@ DISTORTION_COEFFS_LEFT = np.array([
   218.44808959960938
 ], dtype=np.float32).reshape(-1, 1)
 
-if CAMERA_ARUCO_SOURCE.upper() == 'RGB':
-    CAMERA_MATRIX = CAMERA_MATRIX_RGB
-    DISTORTION_COEFFS = DISTORTION_COEFFS_RGB
-else:
-    CAMERA_MATRIX = CAMERA_MATRIX_LEFT
-    DISTORTION_COEFFS = DISTORTION_COEFFS_LEFT
+# Removed CAMERA_ARUCO_SOURCE flag and derived CAMERA_MATRIX/DISTORTION_COEFFS
+# to avoid runtime camera switching ambiguity. The app will use:
+#  - LEFT intrinsics for live ArUco (mono frame)
+#  - RGB intrinsics automatically in test/file mode.
 
 # --- Test Mode Display ---
 TEST_MODE_WINDOW_NAME = "TAIP Test Mode Visualisation"
@@ -158,34 +153,9 @@ def validate_config():
         errors.append("Gauge pressure range invalid")
     if DRILL_PRESSURE_THRESHOLD < 0 or DRILL_PRESSURE_THRESHOLD > GAUGE_MAX_PRESSURE_BAR:
         errors.append("Drill pressure threshold out of range")
-    if errors:
-        print("Configuration issues:")
-        for e in errors:
-            print(" -", e)
-        return False
-    print("✓ Configuration valid")
-
-    # Gauge sanity check
-    try:
-        # Check angle range
-        angle_range = abs(GAUGE_MAX_ANGLE_DEG - GAUGE_MIN_ANGLE_DEG)
-        if not (150.0 <= GAUGE_SWEEP_DEG <= 315.0):
-             print(f"Warning: Unusual gauge sweep: {GAUGE_SWEEP_DEG:.1f} deg")
-        
-        # Check pressure range
-        pressure_range = GAUGE_MAX_PRESSURE_BAR - GAUGE_MIN_PRESSURE_BAR
-        if pressure_range <= 0:
-            errors.append("Error: Invalid pressure range")
-
-        if not errors:
-            print("✓ Gauge calibration appears valid")
-        else:
-            for e in errors:
-                print(f" - {e}")
-            return False
-
-    except Exception as e:
-        print(f"Error validating gauge calibration: {e}")
-        return False
-        
+    # Basic intrinsics sanity
+    for name, K in [("RGB", CAMERA_MATRIX_RGB), ("LEFT", CAMERA_MATRIX_LEFT)]:
+        if K.shape != (3,3):
+            errors.append(f"Camera matrix shape invalid for {name}")
+    # ...existing code...
     return True

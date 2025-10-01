@@ -24,8 +24,9 @@ from pathlib import Path
 import config
 from data_models import PayloadData, EnvironmentalData
 from oak_camera import OakCamera
-from vision_processing import (calculate_gauge_reading, detect_aruco_markers,
-                               show_inference_visualisation)
+from vision_processing import (calculate_gauge_reading,
+                               show_inference_visualisation,
+                               ArucoWorker)
 from file_processing import FileProcessor
 from gcs_client import GCSClient
 from drilling import DrillController  # Updated import from new module
@@ -45,6 +46,8 @@ class MainApp:
         self.env_sensors = None
         self.lcd_display = None
         self.drill_controller = None
+        # ArUco worker
+        self.aruco_worker: Optional[ArucoWorker] = None
         
         # System state
         self.ip_address = "N/A"
@@ -59,10 +62,20 @@ class MainApp:
         if config.INPUT_PATH and Path(config.INPUT_PATH).exists():
             print(f"File input mode: {config.INPUT_PATH}")
             self.file_processor = FileProcessor(config.INPUT_PATH)
+            # In test mode, ArUco runs on RGB frames using RGB intrinsics
+            K = config.CAMERA_MATRIX_RGB
+            D = config.DISTORTION_COEFFS_RGB
         else:
             print("Live camera mode")
             self.camera = OakCamera()
-            
+            # In live mode, ArUco runs on LEFT mono using LEFT intrinsics
+            K = config.CAMERA_MATRIX_LEFT
+            D = config.DISTORTION_COEFFS_LEFT
+
+        # Start non-blocking ArUco worker
+        self.aruco_worker = ArucoWorker(camera_matrix=K, dist_coeffs=D, marker_size_m=config.ARUCO_MARKER_SIZE_M, max_hz=30.0)
+        self.aruco_worker.start()
+        
         # Initialise hardware components
         self.gcs_client = GCSClient()
         self.env_sensors = EnvironmentalSensors()
@@ -92,30 +105,20 @@ class MainApp:
 
             frame_count += 1
 
-            # ArUco detection (isolated to avoid fatal loop errors)
+            # Non-blocking ArUco: feed the worker and read last result
             try:
-                # When visualising, we MUST detect on the same frame being displayed.
-                # The rgb_frame is now the passthrough frame from the YOLO node, which is perfect.
-                if (config.SHOW_LIVE_VISUALISATION or self.file_processor) and rgb_frame is not None:
-                    aruco_frame = rgb_frame
-                    matrix = config.CAMERA_MATRIX_RGB
-                    coeffs = config.DISTORTION_COEFFS_RGB
-                # Headless operation can use the configured source
+                if self.file_processor:
+                    # Test mode: worker configured for RGB intrinsics
+                    self.aruco_worker.update_frame(rgb_frame)
                 else:
-                    aruco_frame = mono_frame if config.CAMERA_ARUCO_SOURCE.upper() == 'LEFT' else rgb_frame
-                    matrix = config.CAMERA_MATRIX
-                    coeffs = config.DISTORTION_COEFFS
-                    
-                if aruco_frame is not None:
-                    aruco_detections, aruco_corners, aruco_ids = detect_aruco_markers(
-                        aruco_frame, matrix, coeffs
-                    )
-                else:
-                    aruco_detections, aruco_corners, aruco_ids = [], None, None
-
+                    # Live mode: worker configured for LEFT intrinsics
+                    self.aruco_worker.update_frame(mono_frame)
+                aruco_detections, aruco_corners, aruco_ids, _, _, aruco_vis = self.aruco_worker.get_latest()
+                if aruco_detections is None:
+                    aruco_detections, aruco_corners, aruco_ids, aruco_vis = [], None, None, None
             except Exception as e:
                 print(f"ArUco error: {e}")
-                aruco_detections, aruco_corners, aruco_ids = [], None, None
+                aruco_detections, aruco_corners, aruco_ids, aruco_vis = [], None, None, None
 
             gauge_reading = calculate_gauge_reading(yolo_detections)
             env_data = self.env_sensors.get_readings()
@@ -138,7 +141,8 @@ class MainApp:
                 # The frame for visualisation is the passthrough frame, which matches YOLO and ArUco coordinates.
                 key = show_inference_visualisation(
                     rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
-                    config.CAMERA_MATRIX_RGB, config.DISTORTION_COEFFS_RGB
+                    camera_matrix=config.CAMERA_MATRIX_RGB, dist_coeffs=config.DISTORTION_COEFFS_RGB,
+                    aruco_inset_bgr=aruco_vis
                 )
                 if key == ord('q'):
                     print("Quit requested by user")
@@ -222,6 +226,8 @@ class MainApp:
             self.lcd_display.close()
         if self.drill_controller:
             self.drill_controller.close()
+        if self.aruco_worker:
+            self.aruco_worker.stop()
             
         try:
             cv2.destroyAllWindows()

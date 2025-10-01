@@ -3,6 +3,11 @@
 ## Overview
 The TAIP (Target Acquisition and Image Processing) system includes comprehensive test mode functionality that allows you to process videos and images instead of using the live camera feed. Test mode is controlled simply by editing the `TEST_INPUT_PATH` in `config.py` - no command line arguments needed!
 
+## ArUco in test mode
+- In live mode, ArUco uses the LEFT mono camera and LEFT intrinsics.
+- In test mode (images/videos), ArUco runs on the RGB input frames and uses RGB intrinsics.
+- The UI shows a small inset with the ArUco view where pose axes are drawn. The main RGB view shows YOLO boxes.
+
 ## Simple Usage
 
 ### How to Switch Modes
@@ -161,3 +166,7 @@ export PYTHONPATH=/home/pi/EGH455/TAIP
 4. **Remote test mode**: Process files over network connection
 
 This test mode functionality provides a complete development and testing environment that mirrors the capabilities of the original `object_detection.py` while being fully integrated with the TAIP system architecture.
+
+## Notes
+- There is no camera source toggle for ArUco. LEFT mono is fixed in live mode to ensure stable pose.
+- ArUco runs in a background thread to avoid blocking or freezes.

@@ -71,6 +71,8 @@ class GCSClient:
         Args:
             frame: The video frame (NumPy array) to send.
         """
+        if frame is None:
+            return
         # Encode the frame as JPEG for efficient transmission
         is_success, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         if not is_success:

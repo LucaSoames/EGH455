@@ -12,7 +12,9 @@ import collections
 import cv2
 import numpy as np
 import math
-from typing import List, Optional
+import threading
+import time
+from typing import List, Optional, Tuple
 
 import config
 from data_models import YoloDetection, ArucoDetection
@@ -31,6 +33,164 @@ _aruco_params.cornerRefinementWinSize = 5
 _aruco_detector = cv2.aruco.ArucoDetector(config.ARUCO_DICT, _aruco_params)
 
 _ARUCO_OBJ_PTS = None
+
+class ArucoWorker:
+    """
+    Non-blocking ArUco detection worker.
+    Processes frames in a background thread and exposes the latest results.
+    """
+
+    def __init__(self, camera_matrix: np.ndarray, dist_coeffs: np.ndarray,
+                 marker_size_m: float = None, max_hz: float = 30.0):
+        self.K = camera_matrix.astype(np.float32)
+        self.D = dist_coeffs.astype(np.float32)
+        self.marker_size = float(marker_size_m or config.ARUCO_MARKER_SIZE_M)
+        self.max_dt = 0.0 if max_hz <= 0 else 1.0 / max_hz
+
+        self._lock = threading.Lock()
+        self._running = False
+        self._latest_frame = None  # Gray or BGR
+        self._result = ([], None, None, None, None, None)  # dets, corners, ids, rvecs, tvecs, vis_img
+
+        # Precompute object points for manual fallback
+        global _ARUCO_OBJ_PTS
+        if _ARUCO_OBJ_PTS is None:
+            s = self.marker_size
+            _ARUCO_OBJ_PTS = np.array(
+                [[-s/2,  s/2, 0],
+                 [ s/2,  s/2, 0],
+                 [ s/2, -s/2, 0],
+                 [-s/2, -s/2, 0]], dtype=np.float32
+            )
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+        if hasattr(self, "_thread"):
+            self._thread.join(timeout=1.0)
+
+    def update_frame(self, frame: np.ndarray):
+        if frame is None:
+            return
+        with self._lock:
+            self._latest_frame = frame.copy()
+
+    def get_latest(self):
+        with self._lock:
+            return self._result
+
+    def _loop(self):
+        last_time = 0.0
+        while self._running:
+            now = time.time()
+            if self.max_dt and (now - last_time) < self.max_dt:
+                time.sleep(0.001)
+                continue
+            last_time = now
+
+            frame = None
+            with self._lock:
+                if self._latest_frame is not None:
+                    frame = self._latest_frame.copy()
+
+            if frame is None:
+                time.sleep(0.001)
+                continue
+
+            try:
+                dets, corners, ids, rvecs, tvecs, vis = self._process(frame)
+                with self._lock:
+                    self._result = (dets, corners, ids, rvecs, tvecs, vis)
+            except Exception:
+                # Never block main loop due to exceptions
+                pass
+
+            time.sleep(0.0005)
+
+    def _process(self, frame: np.ndarray):
+        # Convert to gray if needed
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+
+        # Detect markers
+        try:
+            corners, ids, _ = _aruco_detector.detectMarkers(gray)
+        except Exception:
+            corners, ids, _ = cv2.aruco.detectMarkers(gray, config.ARUCO_DICT, parameters=_aruco_params)
+
+        detections: List[ArucoDetection] = []
+        rvecs = None
+        tvecs = None
+        vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+        if ids is None or len(ids) == 0:
+            return detections, None, None, None, None, vis
+
+        # Robust pose estimation using IPPE square with reprojection selection
+        r_list, t_list = [], []
+        for i in range(len(ids)):
+            pts_img = corners[i].reshape(-1, 2).astype(np.float32)
+            try:
+                retval, rvecs_cand, tvecs_cand, reprojErrs = cv2.solvePnPGeneric(
+                    _ARUCO_OBJ_PTS, pts_img, self.K, self.D, flags=cv2.SOLVEPNP_IPPE_SQUARE
+                )
+                if not retval or len(rvecs_cand) == 0:
+                    # Fallback to built-in if IPPE fails
+                    rvecs_f, tvecs_f, _ = cv2.aruco.estimatePoseSingleMarkers(
+                        [pts_img], self.marker_size, self.K, self.D
+                    )
+                    rvec = rvecs_f[0][0].reshape(3, 1)
+                    tvec = tvecs_f[0][0].reshape(3, 1)
+                else:
+                    # Choose best candidate: prefer positive Z and smallest reprojection error
+                    best_idx = 0
+                    best_score = float("inf")
+                    for j, (rv, tv) in enumerate(zip(rvecs_cand, tvecs_cand)):
+                        proj, _ = cv2.projectPoints(_ARUCO_OBJ_PTS, rv, tv, self.K, self.D)
+                        err = float(np.mean(np.linalg.norm(proj.reshape(-1, 2) - pts_img, axis=1)))
+                        z = float(tv[2])
+                        # Penalise negative Z to avoid axis flipping
+                        score = err + (0.5 if z > 0 else 1000.0)
+                        if score < best_score:
+                            best_score = score
+                            best_idx = j
+                    rvec = rvecs_cand[best_idx]
+                    tvec = tvecs_cand[best_idx]
+                r_list.append(rvec.reshape(1, 1, 3))
+                t_list.append(tvec.reshape(1, 1, 3))
+            except Exception:
+                continue
+
+        if r_list:
+            rvecs = np.vstack(r_list)
+            tvecs = np.vstack(t_list)
+
+        # Draw markers and axes on the worker's own image (mono or input)
+        try:
+            cv2.aruco.drawDetectedMarkers(vis, corners, ids)
+            if rvecs is not None and tvecs is not None:
+                for rvec, tvec in zip(rvecs, tvecs):
+                    cv2.drawFrameAxes(vis, self.K, self.D, rvec, tvec, 0.1, 3)
+        except Exception:
+            pass
+
+        # Build typed detections
+        if rvecs is not None and tvecs is not None:
+            for i, marker_id in enumerate(ids.flatten()):
+                tvec = tvecs[i][0]
+                rvec = rvecs[i][0]
+                detections.append(ArucoDetection(
+                    marker_id=int(marker_id),
+                    position=(float(tvec[0]), float(tvec[1]), float(tvec[2])),
+                    orientation=(float(rvec[0]), float(rvec[1]), float(rvec[2]))
+                ))
+
+        return detections, corners, ids, rvecs, tvecs, vis
 
 def calculate_gauge_reading(detections: List[YoloDetection]) -> Optional[float]:
     """
@@ -96,8 +256,8 @@ def detect_aruco_markers(frame: np.ndarray,
                          camera_matrix: np.ndarray,
                          dist_coeffs: np.ndarray) -> List[ArucoDetection]:
     """
-    Detects ArUco markers and estimates their pose.
-    Reuses the pre-initialised global detector to avoid per-frame allocations.
+    Legacy synchronous detector (kept for standalone/testing).
+    Prefer using ArucoWorker in main loop to avoid blocking.
     """
     global _ARUCO_OBJ_PTS
     if _ARUCO_OBJ_PTS is None:
@@ -197,46 +357,66 @@ def draw_detections_on_frame(frame: np.ndarray,
 
 
 def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners, aruco_ids, gauge_pressure,
-                                 camera_matrix=None, dist_coeffs=None):
-    """Shows a visualisation window for test mode; draws pose axes if intrinsics are given."""
-    display_frame = draw_detections_on_frame(frame, detections, aruco_markers)
+                                 camera_matrix=None, dist_coeffs=None, aruco_inset_bgr: Optional[np.ndarray] = None):
+    """Shows a visualisation window. Draws YOLO on RGB. If an ArUco view is provided, render side-by-side."""
+    display_left = draw_detections_on_frame(frame, detections, aruco_markers)
     
     if config.SHOW_GAUGE_OVERLAY:
-        display_frame = draw_gauge_debug(display_frame, detections)
+        display_left = draw_gauge_debug(display_left, detections)
     
-    h, w = frame.shape[:2]
+    lh, lw = display_left.shape[:2]
     
     if gauge_pressure is not None:
-        # Position gauge reading in top right corner
+        # Position gauge reading in top right corner of the left image
         text = f"Pressure: {gauge_pressure:.2f} bar"
         text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, config.DETECTION_TEXT_THICKNESS)[0]
-        text_x = w - text_size[0] - 10  # 10 pixels from right edge
-        cv2.putText(display_frame, text,
-                    (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
+        text_x = lw - text_size[0] - 10
+        cv2.putText(display_left, text, (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
                     (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
     
-    # Keep detection count in top left corner
-    cv2.putText(display_frame, f"Detections: {len(detections)}",
+    # Keep detection count in top left corner (left image)
+    cv2.putText(display_left, f"Detections: {len(detections)}",
                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
                 (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
 
-    # Draw ArUco bounding boxes and pose axes
-    if aruco_corners is not None and aruco_ids is not None:
-        # The detection and display frames are now the same, so no scaling is needed.
-        cv2.aruco.drawDetectedMarkers(display_frame, aruco_corners, aruco_ids)
-        
-        if camera_matrix is not None and dist_coeffs is not None and len(aruco_markers) > 0:
-            # Get rvecs and tvecs for drawing the axes
-            rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
-                aruco_corners, config.ARUCO_MARKER_SIZE_M, camera_matrix, dist_coeffs
-            )
-            for rvec, tvec in zip(rvecs, tvecs):
-                cv2.drawFrameAxes(display_frame, camera_matrix, dist_coeffs, rvec, tvec, 0.1, 3)
+    # If we have the ArUco view, put it side-by-side with the RGB/YOLO view
+    if aruco_inset_bgr is not None:
+        right_img = aruco_inset_bgr
+        if right_img.ndim == 2:
+            right_img = cv2.cvtColor(right_img, cv2.COLOR_GRAY2BGR)
 
-    cv2.imshow(config.TEST_MODE_WINDOW_NAME, display_frame)
+        # Match heights while preserving aspect ratio
+        target_h = max(display_left.shape[0], right_img.shape[0])
+
+        def resize_to_h(img, h):
+            ih, iw = img.shape[:2]
+            scale = float(h) / float(ih)
+            return cv2.resize(img, (int(iw * scale), h))
+
+        left_resized = resize_to_h(display_left, target_h)
+        right_resized = resize_to_h(right_img, target_h)
+
+        # Add labels for each camera view (top-left corner)
+        cv2.putText(left_resized, "RGB: YOLO", (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
+                    config.DETECTION_TEXT_SIZE * 0.7, (255, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(right_resized, "LEFT: ArUco", (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
+                    config.DETECTION_TEXT_SIZE * 0.7, (255, 255, 0), 2, cv2.LINE_AA)
+
+        # Compose canvas with separator
+        sep = 8
+        canvas_w = left_resized.shape[1] + sep + right_resized.shape[1]
+        canvas = np.zeros((target_h, canvas_w, 3), dtype=np.uint8)
+
+        canvas[:, :left_resized.shape[1]] = left_resized
+        canvas[:, left_resized.shape[1] + sep:] = right_resized
+
+        cv2.imshow(config.TEST_MODE_WINDOW_NAME, canvas)
+    else:
+        # Fallback to single left image if ArUco view not available
+        cv2.imshow(config.TEST_MODE_WINDOW_NAME, display_left)
+
     wait_ms = 0 if not config.TEST_MODE_AUTO_ADVANCE else config.TEST_MODE_DISPLAY_TIME
     key = cv2.waitKey(wait_ms) & 0xFF
-    
     return key
 
 

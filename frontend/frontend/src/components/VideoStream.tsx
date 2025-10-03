@@ -1,14 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import io from 'socket.io-client';
 
 function VideoStream() {
   const [streamActive, setStreamActive] = useState<boolean>(false);
+  const [currentFrame, setCurrentFrame] = useState<string>('');
+  const [connected, setConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    const socket = io('http://localhost:5000');
+
+    socket.on('connect', () => {
+      console.log('VideoStream: Connected to server');
+      setConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('VideoStream: Disconnected from server');
+      setConnected(false);
+      setCurrentFrame('');
+    });
+
+    socket.on('video_frame', (data: { frame: string }) => {
+      if (streamActive) {
+        setCurrentFrame(`data:image/jpeg;base64,${data.frame}`);
+      }
+    });
+
+    socket.on('error', (error) => {
+      console.error('VideoStream socket error:', error);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [streamActive]);
 
   const toggleStream = () => {
     setStreamActive(!streamActive);
-  };
-
-  const getStreamUrl = () => {
-    return `/api/video/stream`;
+    if (!streamActive) {
+      // Request initial frame when starting stream
+      const socket = io('http://localhost:5000');
+      socket.emit('request_video_frame', {});
+      socket.disconnect();
+    } else {
+      // Clear frame when stopping stream
+      setCurrentFrame('');
+    }
   };
 
   return (
@@ -27,16 +64,50 @@ function VideoStream() {
       </div>
 
       <div className="video-container">
-        {streamActive ? (
-          <img 
-            src={getStreamUrl()} 
-            alt="Live video stream"
-            className="video-stream"
-            onError={(e) => {
-              console.error('Video stream error');
-              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5WaWRlbyBTdHJlYW0gVW5hdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+        {streamActive && connected ? (
+          currentFrame ? (
+            <img 
+              src={currentFrame} 
+              alt="Live video stream"
+              className="video-stream"
+              style={{ width: '100%', height: 'auto', maxHeight: '400px', objectFit: 'contain' }}
+              onError={() => {
+                console.error('Video frame display error');
+              }}
+            />
+          ) : (
+            <div 
+              style={{
+                width: '100%',
+                height: '300px',
+                backgroundColor: '#f8f9fa',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px dashed #dee2e6',
+                borderRadius: '8px',
+                color: '#6c757d'
+              }}
+            >
+              📡 Waiting for video frames...
+            </div>
+          )
+        ) : !connected ? (
+          <div 
+            style={{
+              width: '100%',
+              height: '300px',
+              backgroundColor: '#fff5f5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px dashed #fed7d7',
+              borderRadius: '8px',
+              color: '#e53e3e'
             }}
-          />
+          >
+            ⚠️ Not connected to server
+          </div>
         ) : (
           <div 
             style={{
@@ -57,7 +128,7 @@ function VideoStream() {
       </div>
       
       <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#666' }}>
-        Stream URL: {getStreamUrl()}
+        Status: {connected ? (streamActive ? 'Streaming' : 'Ready') : 'Disconnected'}
       </div>
     </div>
   );

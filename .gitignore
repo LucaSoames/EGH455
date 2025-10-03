@@ -7,3 +7,5 @@
 *.mov
 *.mkv
 /models/training/*
+/frontend/frontend/node_modules/*
+/TAIP/taip_env/*

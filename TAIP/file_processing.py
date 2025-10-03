@@ -22,18 +22,27 @@ class FileProcessor:
     Handles both file/image loading and on-device neural network inference.
     """
     
-    def __init__(self, input_path: Path):
+    def __init__(self, input_path):
         # File handling attributes
-        self.input_path = Path(input_path)
+        self.input_path = Path(input_path) if not isinstance(input_path, Path) else input_path
         self.cap = None
         self.image_files = []
         self.current_index = 0
+        
+        # Verify path exists first
+        if not self.input_path.exists():
+            raise ValueError(f"Input path does not exist: {self.input_path}")
         
         # Set up file source
         if self.input_path.is_file():
             # Video file
             self.cap = cv2.VideoCapture(str(self.input_path))
-            print(f"Loaded video: {self.input_path.name}")
+            if not self.cap.isOpened():
+                raise ValueError(f"Cannot open video file: {self.input_path}")
+            print(f"✓ Loaded video: {self.input_path.name}")
+            frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = self.cap.get(cv2.CAP_PROP_FPS)
+            print(f"  Frames: {frame_count}, FPS: {fps:.1f}")
         elif self.input_path.is_dir():
             # Image directory
             extensions = ['.jpg', '.jpeg', '.png', '.bmp']
@@ -41,7 +50,11 @@ class FileProcessor:
                 p for p in self.input_path.glob('*') 
                 if p.suffix.lower() in extensions
             ])
-            print(f"Loaded {len(self.image_files)} images from {self.input_path.name}")
+            if not self.image_files:
+                raise ValueError(f"No images found in: {self.input_path}")
+            print(f"✓ Loaded {len(self.image_files)} images from {self.input_path.name}")
+        else:
+            raise ValueError(f"Input path is neither file nor directory: {self.input_path}")
         
         # Set up inference pipeline
         self._load_model_config()
@@ -49,10 +62,12 @@ class FileProcessor:
         try:
             self.device = dai.Device(self.pipeline)
             self.q_in = self.device.getInputQueue("host_in")
-            self.q_nn = self.device.getOutputQueue("nn_out", maxSize=2, blocking=True)
-            print("DepthAI device initialized for file inference")
+            self.q_nn = self.device.getOutputQueue("nn_out", maxSize=4, blocking=True)
+            print("✓ File processor device connected")
         except Exception as e:
-            raise RuntimeError(f"Failed to initialise DepthAI device for file inference: {e}")
+            if self.cap:
+                self.cap.release()
+            raise RuntimeError(f"Failed to create file processor device: {e}")
     
     def _load_model_config(self):
         """Load neural network configuration from JSON file."""
@@ -114,17 +129,20 @@ class FileProcessor:
         """Process a single frame through the neural network."""
         if frame is None:
             return []
-            
-        # Create a DepthAI ImgFrame and send it to the device.
-        # The device-side pipeline will handle resizing and format conversion.
+        
+        # Resize frame to model input size to avoid exceeding XLinkIn buffer
+        # The DepthAI device expects frames at the model's input resolution
+        frame_resized = cv2.resize(frame, self.model_input)
+        
+        # Create a DepthAI ImgFrame
         img = dai.ImgFrame()
         img.setType(dai.ImgFrame.Type.BGR888p)
-        img.setFrame(frame)
-        img.setWidth(frame.shape[1])
-        img.setHeight(frame.shape[0])
+        img.setFrame(frame_resized)
+        img.setWidth(frame_resized.shape[1])
+        img.setHeight(frame_resized.shape[0])
         self.q_in.send(img)
 
-        # Block until results ready (avoids empty detections)
+        # Block until results ready
         nn_packet = self.q_nn.get()
         dets = []
         for d in nn_packet.detections:

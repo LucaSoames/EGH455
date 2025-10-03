@@ -22,7 +22,7 @@ TAIP_ROOT = PROJECT_ROOT / "TAIP"
 # Set path to a directory of images or a video file to run in testing mode.
 
 # Production (live camera feed)
-# INPUT_PATH = None
+INPUT_PATH = None
 SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed on Pi
 
 # Testing (images)
@@ -30,7 +30,7 @@ SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed
 
 # Testing (video)
 # INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
-INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_B.mp4"
+# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_B.mp4"
 # INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_silver_A.mp4"
 
 # --- Camera Configuration ---
@@ -61,8 +61,8 @@ DETECTION_COLOURS = {
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
-# GCS_LAPTOP_IP = "192.168.1.100"
-GCS_LAPTOP_IP = "127.0.0.1"
+GCS_LAPTOP_IP = "10.88.52.93"
+# GCS_LAPTOP_IP = "127.0.0.1"
 GCS_URL = f"http://{GCS_LAPTOP_IP}:5000"
 POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
@@ -139,8 +139,10 @@ TEST_MODE_DISPLAY_TIME = 100  # ms
 TEST_MODE_AUTO_ADVANCE = False
 
 # Automatically enable auto-advance if a video file is selected
-if not INPUT_PATH or Path(INPUT_PATH).is_file():
-    TEST_MODE_AUTO_ADVANCE = True
+if INPUT_PATH is not None:
+    input_path_obj = Path(INPUT_PATH)
+    if input_path_obj.exists() and input_path_obj.is_file():
+        TEST_MODE_AUTO_ADVANCE = True
 
 def validate_config():
     """Basic configuration validation for test scripts."""

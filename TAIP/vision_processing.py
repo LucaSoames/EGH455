@@ -415,7 +415,14 @@ def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners
         # Fallback to single left image if ArUco view not available
         cv2.imshow(config.TEST_MODE_WINDOW_NAME, display_left)
 
-    wait_ms = 0 if not config.TEST_MODE_AUTO_ADVANCE else config.TEST_MODE_DISPLAY_TIME
+    # Determine wait time based on mode
+    if config.TEST_MODE_AUTO_ADVANCE:
+        # Video mode: wait briefly
+        wait_ms = config.TEST_MODE_DISPLAY_TIME
+    else:
+        # Image folder or live mode: wait for keypress (0 = wait indefinitely)
+        wait_ms = 1  # Small delay to allow window updates
+    
     key = cv2.waitKey(wait_ms) & 0xFF
     return key
 

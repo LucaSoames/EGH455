@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
 
+
+// Type definitions
 interface SystemEvent {
   id: string;
-  type: 'telemetry' | 'system' | 'drill' | 'camera' | 'sensor' | 'vision';
+  type: 'telemetry' | 'system' | 'drill' | 'camera' | 'sensor' | 'vision' | 'detection' | 'aruco' | 'error';
   action: string;
   details: string;
   timestamp: string;
@@ -14,9 +16,9 @@ interface SystemStats {
   uptime_seconds: number;
   total_events: number;
   events_last_hour: number;
-  system_status: string;
   drill_active: boolean;
-  pressure_status: string;
+  system_status?: string;
+  pressure_status?: string;
 }
 
 function AuditLogs() {
@@ -42,7 +44,7 @@ function AuditLogs() {
     });
 
     socket.on('system_event', (event: SystemEvent) => {
-      setEvents((prev: SystemEvent[]) => [event, ...prev.slice(0, 99)]); // Keep last 100 events
+      setEvents(prev => [event, ...prev.slice(0, 99)]); // Keep last 100 events
     });
 
     socket.on('system_stats', (statsData: SystemStats) => {
@@ -112,7 +114,7 @@ function AuditLogs() {
 
       // Add events
       if (newEvents.length > 0) {
-        setEvents((prev: SystemEvent[]) => [...newEvents, ...prev.slice(0, 97)]); // Keep total under 100
+        setEvents(prev => [...newEvents, ...prev.slice(0, 97)]); // Keep total under 100
       }
     });
 
@@ -142,7 +144,7 @@ function AuditLogs() {
     }
   };
 
-  const filteredEvents = events.filter((event: SystemEvent) => 
+  const filteredEvents = events.filter(event => 
     filter === 'all' || event.type === filter
   );
 
@@ -155,7 +157,7 @@ function AuditLogs() {
   if (!connected) {
     return (
       <div className="card">
-        <p style={{ color: '#e74c3c' }}>⚠️ Not connected to TAIP system</p>
+        <p style={{ color: '#393939ff' }}>⚠️ Not connected to TAIP system</p>
       </div>
     );
   }
@@ -172,7 +174,7 @@ function AuditLogs() {
               <strong>{formatUptime(stats.uptime_seconds)}</strong>
             </div>
             <div className="telemetry-item">
-              <span>� Total Events</span>
+              <span>📊 Total Events</span>
               <strong>{stats.total_events}</strong>
             </div>
             <div className="telemetry-item">

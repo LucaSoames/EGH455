@@ -31,6 +31,7 @@ from file_processing import FileProcessor
 from gcs_client import GCSClient
 from drilling import DrillController  # Updated import from new module
 from enviro_lcd import EnvironmentalSensors, LCDDisplay  # Moved here
+from web_server import WebServer
 
 
 class MainApp:
@@ -49,23 +50,30 @@ class MainApp:
         # ArUco worker
         self.aruco_worker: Optional[ArucoWorker] = None
         
+        # Web server for frontend integration
+        self.web_server = None
+        
         # System state
         self.ip_address = "N/A"
         self.last_telem_time = 0
         self.last_frame_time = 0
+        self.last_web_telem_time = 0
+        self.last_web_frame_time = 0
 
     def setup(self):
         """Initialise all hardware and software components."""
         print("Initialising TAIP Subsystem...")
         
         # Determine input mode and initialise accordingly
-        if config.INPUT_PATH and Path(config.INPUT_PATH).exists():
+        if config.INPUT_PATH:
+            # File input mode
             print(f"File input mode: {config.INPUT_PATH}")
             self.file_processor = FileProcessor(config.INPUT_PATH)
             # In test mode, ArUco runs on RGB frames using RGB intrinsics
             K = config.CAMERA_MATRIX_RGB
             D = config.DISTORTION_COEFFS_RGB
         else:
+            # Live camera mode
             print("Live camera mode")
             self.camera = OakCamera()
             # In live mode, ArUco runs on LEFT mono using LEFT intrinsics
@@ -82,9 +90,14 @@ class MainApp:
         self.lcd_display = LCDDisplay()
         self.drill_controller = DrillController()
         
+        # REMOVED: Web server initialization - it should run on GCS laptop instead
+        # self.web_server = WebServer()
+        # self.web_server.run_in_thread(debug=False)
+        
         # Get system IP address
         self.ip_address = self._get_ip_address()
         print(f"System IP: {self.ip_address}")
+        print(f"GCS Server URL: {config.GCS_URL}")
 
     def run_loop(self):
         """Main processing loop for both camera and file input."""
@@ -123,12 +136,16 @@ class MainApp:
             gauge_reading = calculate_gauge_reading(yolo_detections)
             env_data = self.env_sensors.get_readings()
             
-            # Control drill based on gauge reading
-            self.drill_controller.control_drill(gauge_reading)
+            # Drill control
+            if self.drill_controller:
+                self.drill_controller.control_drill(gauge_reading)
             
-            # Handle GCS communication
-            self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections,
-                                           gauge_reading, env_data)
+            # GCS communication
+            self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections, gauge_reading, env_data)
+            
+            # Handle web server communication for frontend
+            self._handle_web_server_communication(rgb_frame, yolo_detections, aruco_detections,
+                                                gauge_reading, env_data)
 
             # Update LCD display
             proximity = self.env_sensors.get_proximity()
@@ -136,15 +153,24 @@ class MainApp:
             self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections,
                                             env_data, gauge_reading, bool(self.file_processor))
 
-            # Show visualisation for file processing mode or if live visualisation enabled
-            if self.file_processor or (config.SHOW_LIVE_VISUALISATION and self.camera):
-                # The frame for visualisation is the passthrough frame, which matches YOLO and ArUco coordinates.
+            # Show visualization if enabled (works for live camera, video, or images)
+            if config.SHOW_LIVE_VISUALISATION:
+                # Determine camera matrix for the RGB frame
+                if self.file_processor:
+                    K = config.CAMERA_MATRIX_RGB
+                    D = config.DISTORTION_COEFFS_RGB
+                else:
+                    K = config.CAMERA_MATRIX_RGB
+                    D = config.DISTORTION_COEFFS_RGB
+                
                 key = show_inference_visualisation(
                     rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
-                    camera_matrix=config.CAMERA_MATRIX_RGB, dist_coeffs=config.DISTORTION_COEFFS_RGB,
+                    camera_matrix=K, dist_coeffs=D,
                     aruco_inset_bgr=aruco_vis
                 )
-                if key == ord('q'):
+                
+                # Handle quit key (q or ESC)
+                if key == ord('q') or key == 27:
                     print("Quit requested by user")
                     break
                 if frame_count % 1 == 0:
@@ -200,6 +226,32 @@ class MainApp:
             self.gcs_client.send_frame(rgb_frame)
             self.last_frame_time = now
 
+    def _handle_web_server_communication(self, rgb_frame, yolo_detections, aruco_detections, 
+                                       gauge_reading, env_data):
+        """Handle web server communication for frontend at controlled rates."""
+        # if not self.web_server:
+        #     return
+            
+        # now = time.time()
+        
+        # # Send telemetry data to web server (higher frequency for responsive UI)
+        # if (now - self.last_web_telem_time) >= (1.0 / 10):  # 10 Hz for web interface
+        #     payload = PayloadData(
+        #         timestamp=datetime.now().isoformat(),
+        #         yolo_detections=yolo_detections,
+        #         aruco_markers=aruco_detections,
+        #         gauge_pressure_bar=gauge_reading,
+        #         environmental_data=env_data
+        #     )
+        #     self.web_server.update_telemetry(payload)
+        #     self.last_web_telem_time = now
+
+        # # Send video frame to web server (controlled frequency to avoid overwhelming)
+        # if (now - self.last_web_frame_time) >= (1.0 / 5):  # 5 FPS for web streaming
+        #     self.web_server.update_video_frame(rgb_frame)
+        #     self.last_web_frame_time = now
+        pass
+
     def _get_ip_address(self) -> str:
         """Get the primary IP address of the device."""
         try:
@@ -216,26 +268,29 @@ class MainApp:
         print("Shutting down TAIP Subsystem...")
         self.running = False
         
-        if self.file_processor:
-            self.file_processor.close()
-        if self.camera:
-            self.camera.close()
-        if self.gcs_client:
-            self.gcs_client.shutdown()
-        if self.lcd_display:
-            self.lcd_display.close()
-        if self.drill_controller:
-            self.drill_controller.close()
         if self.aruco_worker:
             self.aruco_worker.stop()
-            
-        try:
-            cv2.destroyAllWindows()
-        except Exception:
-            pass
-            
+        
+        if self.file_processor:
+            self.file_processor.close()
+        
+        if self.camera:
+            self.camera.close()
+        
+        if self.gcs_client:
+            self.gcs_client.shutdown()
+        
+        if self.drill_controller:
+            self.drill_controller.close()
+        
+        if self.lcd_display:
+            self.lcd_display.close()
+        
+        # REMOVED: Web server shutdown
+        # if self.web_server:
+        #     print("Web server will shut down with main process")
+        
         print("Shutdown complete.")
-
 
 if __name__ == '__main__':
     app = MainApp()

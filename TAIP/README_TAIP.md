@@ -364,3 +364,56 @@ ArUco detection and pose run in a background thread (ArucoWorker). The main loop
 ## Configuration
 - Removed camera switching flags for ArUco. LEFT mono is always used in live mode.
 - Keep both CAMERA_MATRIX_LEFT and CAMERA_MATRIX_RGB for correct intrinsics in live/test modes.
+
+## GCS Server Setup
+
+The Ground Control Station (GCS) server receives telemetry and video from the Pi and serves the web interface.
+
+### Running on GCS Laptop
+
+1. **Copy required files to laptop**:
+   ```bash
+   # On laptop
+   scp -r pi@<pi-ip>:/home/pi/EGH455/TAIP/gcs_server.py .
+   scp -r pi@<pi-ip>:/home/pi/EGH455/frontend ./
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   pip install flask flask-socketio flask-cors
+   ```
+
+3. **Start GCS server**:
+   ```bash
+   python3 gcs_server.py
+   ```
+
+4. **Update Pi config**:
+   Edit `/home/pi/EGH455/TAIP/config.py` and set:
+   ```python
+   GCS_LAPTOP_IP = "<your-laptop-ip>"
+   ```
+
+### Running GCS Server on Pi (Testing)
+
+If you want to run everything on the Pi for testing:
+
+1. **Start GCS server** (in one terminal):
+   ```bash
+   cd /home/pi/EGH455/TAIP
+   python3 gcs_server.py
+   ```
+
+2. **Update config** to use localhost:
+   ```python
+   GCS_LAPTOP_IP = "127.0.0.1"
+   ```
+
+3. **Start TAIP system** (in another terminal):
+   ```bash
+   cd /home/pi/EGH455/TAIP
+   python3 main.py
+   ```
+
+4. **Access web interface**:
+   Open browser to `http://<pi-ip>:5000`

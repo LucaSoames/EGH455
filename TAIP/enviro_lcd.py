@@ -1,37 +1,31 @@
+#!/usr/bin/env python3
 import time
 import cv2
 from typing import Optional
-
 from data_models import EnvironmentalData
 
-# Conditional import for Pimoroni Enviro+ libraries
+# Import exactly like the working display_ip.py - NO gpiod imports at all
 try:
-    from bme280 import BME280
-    
-    # Handle LTR559 import similar to the working example
-    try:
-        from ltr559 import LTR559
-        ltr559 = LTR559()
-    except ImportError:
-        import ltr559
-    
     import st7735
-    from PIL import Image, ImageDraw, ImageFont
     from fonts.ttf import RobotoMedium as UserFont
+    from PIL import Image, ImageDraw, ImageFont
+    from bme280 import BME280
+    from ltr559 import LTR559  # Import class directly, not module
     
     IS_ENVIRO_AVAILABLE = True
     print("✓ Enviro+ libraries imported successfully")
-except Exception as e:
-    print("WARNING: Enviro+ libraries not found. Running without LCD/sensor support.")
+except ImportError as e:
+    print(f"WARNING: Enviro+ libraries not found. Running without LCD/sensor support.")
     print(f" -> Import error detail: {e}")
     IS_ENVIRO_AVAILABLE = False
-    # Stubs to avoid NameError if PIL not available
+    # Stubs to avoid NameError
     Image = None
     ImageDraw = None
     ImageFont = None
     UserFont = None
     st7735 = None
-    ltr559 = None
+    BME280 = None
+    LTR559 = None
 
 class EnvironmentalSensors:
     """Handles Enviro+ board sensors."""
@@ -41,12 +35,7 @@ class EnvironmentalSensors:
         if IS_ENVIRO_AVAILABLE:
             try:
                 self.bme = BME280()
-                # Use the global ltr559 instance if it's the module type,
-                # otherwise use the LTR559 class instance
-                if isinstance(ltr559, type(st7735)):  # It's a module
-                    self.ltr = ltr559
-                else:  # It's an LTR559 instance
-                    self.ltr = ltr559
+                self.ltr = LTR559()  # Instantiate the class directly
                 print("✓ Environmental sensors initialised")
             except Exception as e:
                 print(f"Environmental sensor init failed: {e}")
@@ -55,18 +44,11 @@ class EnvironmentalSensors:
         if not self.bme or not self.ltr:
             return None
         try:
-            # Handle both module and class instance cases
-            if hasattr(self.ltr, 'get_lux'):
-                lux = self.ltr.get_lux()
-            else:
-                # Module-style access
-                lux = self.ltr.get_lux() if callable(getattr(self.ltr, 'get_lux', None)) else 0.0
-                
             return EnvironmentalData(
                 temperature_c=self.bme.get_temperature(),
                 pressure_hpa=self.bme.get_pressure(),
                 humidity_rh=self.bme.get_humidity(),
-                light_lux=lux
+                light_lux=self.ltr.get_lux()
             )
         except Exception as e:
             print(f"Environmental sensor error: {e}")
@@ -76,13 +58,7 @@ class EnvironmentalSensors:
         if not self.ltr:
             return 0
         try:
-            # Handle both module and class instance cases
-            if hasattr(self.ltr, 'get_proximity'):
-                return self.ltr.get_proximity()
-            else:
-                # Module-style access
-                get_prox = getattr(self.ltr, 'get_proximity', None)
-                return get_prox() if callable(get_prox) else 0
+            return self.ltr.get_proximity()
         except Exception:
             return 0
 
@@ -93,7 +69,7 @@ class LCDDisplay:
         self.current_mode = 0
         self.last_tap_time = 0
 
-        if IS_ENVIRO_AVAILABLE and st7735 and Image:
+        if IS_ENVIRO_AVAILABLE:
             try:
                 self.lcd = st7735.ST7735(
                     port=0,
@@ -104,10 +80,9 @@ class LCDDisplay:
                     spi_speed_hz=10000000
                 )
                 self.lcd.begin()
-                self.lcd.set_backlight(1)  # Ensure backlight is on
+                self.lcd.set_backlight(1)
                 self.image = Image.new("RGB", (self.lcd.width, self.lcd.height), color=(0, 0, 0))
                 self.draw = ImageDraw.Draw(self.image)
-                # UserFont is a path-like object exported by Pimoroni fonts package
                 self.font = ImageFont.truetype(UserFont, 14)
                 print("✓ LCD display initialised")
             except Exception as e:
@@ -177,8 +152,23 @@ class LCDDisplay:
             print(f"LCD update error: {e}")
 
     def close(self):
+        """Properly close the LCD and turn off backlight."""
         if self.lcd:
             try:
+                # Clear the screen first
+                print("Clearing LCD display...")
+                if hasattr(self, 'draw') and hasattr(self, 'image'):
+                    self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height), (0, 0, 0))
+                    self.lcd.display(self.image)
+                
+                # Turn off backlight
+                print("Turning off LCD backlight...")
                 self.lcd.set_backlight(0)
-            except Exception:
-                pass
+                
+                # Small delay to ensure commands are processed
+                time.sleep(0.1)
+                print("✓ LCD closed successfully")
+            except Exception as e:
+                print(f"Error closing LCD: {e}")
+            finally:
+                self.lcd = None

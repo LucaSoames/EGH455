@@ -136,13 +136,6 @@ DISTORTION_COEFFS_LEFT = np.array([
 # --- Test Mode Display ---
 TEST_MODE_WINDOW_NAME = "TAIP Test Mode Visualisation"
 TEST_MODE_DISPLAY_TIME = 100  # ms
-TEST_MODE_AUTO_ADVANCE = False
-
-# Automatically enable auto-advance if a video file is selected
-if INPUT_PATH is not None:
-    input_path_obj = Path(INPUT_PATH)
-    if input_path_obj.exists() and input_path_obj.is_file():
-        TEST_MODE_AUTO_ADVANCE = True
 
 def validate_config():
     """Basic configuration validation for test scripts."""

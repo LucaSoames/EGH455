@@ -29,9 +29,8 @@ from vision_processing import (calculate_gauge_reading,
                                ArucoWorker)
 from file_processing import FileProcessor
 from gcs_client import GCSClient
-from drilling import DrillController  # Updated import from new module
-from enviro_lcd import EnvironmentalSensors, LCDDisplay  # Moved here
-from web_server import WebServer
+from enviro_lcd import EnvironmentalSensors, LCDDisplay
+from drilling import DrillController
 
 
 class MainApp:
@@ -41,6 +40,7 @@ class MainApp:
         self.running = True
         self.file_processor = None
         self.camera = None
+        self.is_video_mode = True
         
         # Hardware components
         self.gcs_client = None
@@ -50,15 +50,10 @@ class MainApp:
         # ArUco worker
         self.aruco_worker: Optional[ArucoWorker] = None
         
-        # Web server for frontend integration
-        self.web_server = None
-        
         # System state
         self.ip_address = "N/A"
         self.last_telem_time = 0
         self.last_frame_time = 0
-        self.last_web_telem_time = 0
-        self.last_web_frame_time = 0
 
     def setup(self):
         """Initialise all hardware and software components."""
@@ -69,6 +64,10 @@ class MainApp:
             # File input mode
             print(f"File input mode: {config.INPUT_PATH}")
             self.file_processor = FileProcessor(config.INPUT_PATH)
+            # Determine if auto-advance or manual based on input type
+            self.is_video_mode = self.file_processor.is_video
+            mode_text = "video (auto-advance)" if self.is_video_mode else "images (manual advance)"
+            print(f"Input type: {mode_text}")
             # In test mode, ArUco runs on RGB frames using RGB intrinsics
             K = config.CAMERA_MATRIX_RGB
             D = config.DISTORTION_COEFFS_RGB
@@ -76,6 +75,7 @@ class MainApp:
             # Live camera mode
             print("Live camera mode")
             self.camera = OakCamera()
+            self.is_video_mode = True
             # In live mode, ArUco runs on LEFT mono using LEFT intrinsics
             K = config.CAMERA_MATRIX_LEFT
             D = config.DISTORTION_COEFFS_LEFT
@@ -89,10 +89,6 @@ class MainApp:
         self.env_sensors = EnvironmentalSensors()
         self.lcd_display = LCDDisplay()
         self.drill_controller = DrillController()
-        
-        # REMOVED: Web server initialization - it should run on GCS laptop instead
-        # self.web_server = WebServer()
-        # self.web_server.run_in_thread(debug=False)
         
         # Get system IP address
         self.ip_address = self._get_ip_address()
@@ -140,12 +136,8 @@ class MainApp:
             if self.drill_controller:
                 self.drill_controller.control_drill(gauge_reading)
             
-            # GCS communication
+            # GCS communication - send telemetry and frames to remote GCS server
             self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections, gauge_reading, env_data)
-            
-            # Handle web server communication for frontend
-            self._handle_web_server_communication(rgb_frame, yolo_detections, aruco_detections,
-                                                gauge_reading, env_data)
 
             # Update LCD display
             proximity = self.env_sensors.get_proximity()
@@ -153,7 +145,7 @@ class MainApp:
             self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections,
                                             env_data, gauge_reading, bool(self.file_processor))
 
-            # Show visualization if enabled (works for live camera, video, or images)
+            # Show visualisation if enabled (works for live camera, video, or images)
             if config.SHOW_LIVE_VISUALISATION:
                 # Determine camera matrix for the RGB frame
                 if self.file_processor:
@@ -166,7 +158,8 @@ class MainApp:
                 key = show_inference_visualisation(
                     rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
                     camera_matrix=K, dist_coeffs=D,
-                    aruco_inset_bgr=aruco_vis
+                    aruco_inset_bgr=aruco_vis,
+                    is_video_mode=self.is_video_mode  # Pass the mode flag
                 )
                 
                 # Handle quit key (q or ESC)
@@ -226,32 +219,6 @@ class MainApp:
             self.gcs_client.send_frame(rgb_frame)
             self.last_frame_time = now
 
-    def _handle_web_server_communication(self, rgb_frame, yolo_detections, aruco_detections, 
-                                       gauge_reading, env_data):
-        """Handle web server communication for frontend at controlled rates."""
-        # if not self.web_server:
-        #     return
-            
-        # now = time.time()
-        
-        # # Send telemetry data to web server (higher frequency for responsive UI)
-        # if (now - self.last_web_telem_time) >= (1.0 / 10):  # 10 Hz for web interface
-        #     payload = PayloadData(
-        #         timestamp=datetime.now().isoformat(),
-        #         yolo_detections=yolo_detections,
-        #         aruco_markers=aruco_detections,
-        #         gauge_pressure_bar=gauge_reading,
-        #         environmental_data=env_data
-        #     )
-        #     self.web_server.update_telemetry(payload)
-        #     self.last_web_telem_time = now
-
-        # # Send video frame to web server (controlled frequency to avoid overwhelming)
-        # if (now - self.last_web_frame_time) >= (1.0 / 5):  # 5 FPS for web streaming
-        #     self.web_server.update_video_frame(rgb_frame)
-        #     self.last_web_frame_time = now
-        pass
-
     def _get_ip_address(self) -> str:
         """Get the primary IP address of the device."""
         try:
@@ -268,6 +235,14 @@ class MainApp:
         print("Shutting down TAIP Subsystem...")
         self.running = False
         
+        # Close OpenCV windows first
+        try:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)  # Process window events
+        except Exception as e:
+            print(f"Error closing CV windows: {e}")
+        
+        # Stop ArUco worker
         if self.aruco_worker:
             self.aruco_worker.stop()
         
@@ -285,10 +260,6 @@ class MainApp:
         
         if self.lcd_display:
             self.lcd_display.close()
-        
-        # REMOVED: Web server shutdown
-        # if self.web_server:
-        #     print("Web server will shut down with main process")
         
         print("Shutdown complete.")
 

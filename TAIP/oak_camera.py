@@ -24,7 +24,7 @@ from data_models import YoloDetection
 
 class OakCamera:
     """Manages the OAK-D Lite camera and the YOLOv8s neural network pipeline."""
-
+    
     def __init__(self):
         self.latest_rgb_frame: Optional[np.ndarray] = None
         self.latest_mono_frame: Optional[np.ndarray] = None
@@ -35,15 +35,16 @@ class OakCamera:
         self._running = False
         try:
             self.device = dai.Device(self.pipeline)
-            print("OAK-D Lite connected successfully.")
-            # Create output queues
-            self._rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
-            self._mono_queue = self.device.getOutputQueue(name="mono", maxSize=4, blocking=False)
-            self._nn_queue = self.device.getOutputQueue(name="nn", maxSize=4, blocking=False)
-            self._passthrough_queue = self.device.getOutputQueue(name="passthrough", maxSize=4, blocking=False)
+            print(f"OAK-D Lite connected successfully at {config.CAMERA_FPS} FPS.")
+            
+            # Create output queues with maxSize=1 to always get latest frame only
+            self._rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
+            self._mono_queue = self.device.getOutputQueue(name="mono", maxSize=1, blocking=False)
+            self._nn_queue = self.device.getOutputQueue(name="nn", maxSize=1, blocking=False)
+            self._passthrough_queue = self.device.getOutputQueue(name="passthrough", maxSize=1, blocking=False)
 
-            # After starting the pipeline, wait a moment for auto-exposure to settle, then lock it.
-            time.sleep(2) # Wait 2 seconds
+            # Wait for auto-exposure to settle
+            time.sleep(2)
 
             self._running = True
             self._thread = threading.Thread(target=self._thread_loop, daemon=True)
@@ -52,6 +53,7 @@ class OakCamera:
         except Exception as e:
             print(f"FATAL: Failed to initialise OAK-D Lite device: {e}")
             raise
+        
 
     def _load_config(self):
         """Loads model configuration from the JSON file."""
@@ -92,14 +94,18 @@ class OakCamera:
         cam_rgb.setPreviewSize(self.model_input_size)
         cam_rgb.setInterleaved(False)
         cam_rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-        cam_rgb.setFps(config.CAMERA_FPS)
+        cam_rgb.setFps(config.CAMERA_FPS)  # Camera captures at this rate
+        
+        # Set the ISP (Image Signal Processor) to output at the same rate
+        cam_rgb.setIspScale(1, 1)  # No scaling of ISP output
+        
         cam_rgb.preview.link(xout_rgb.input)
 
         # --- Mono Camera Configuration ---
         mono_cam.setBoardSocket(dai.CameraBoardSocket.CAM_B) # Use left camera
         mono_cam.setResolution(dai.MonoCameraProperties.SensorResolution.THE_480_P)
-        mono_cam.setFps(config.CAMERA_FPS)
-        mono_cam.out.link(xout_mono.input) # This line is crucial
+        mono_cam.setFps(config.CAMERA_FPS)  # Mono camera also at specified rate
+        mono_cam.out.link(xout_mono.input)
 
         # YOLO network setup
         yolo_net = pipeline.createYoloDetectionNetwork()
@@ -111,20 +117,26 @@ class OakCamera:
         yolo_net.setCoordinateSize(nn_meta['coordinates'])
         yolo_net.setNumInferenceThreads(2)
         
+        # Set NN input to non-blocking with small queue to prevent backlog
+        yolo_net.input.setBlocking(False)
+        yolo_net.input.setQueueSize(1)  # Only keep latest frame
+        
         # Link RGB preview to YOLO input
         cam_rgb.preview.link(yolo_net.input)
         
-        # Link YOLO outputs
+        # Link YOLO outputs with non-blocking queues
         yolo_net.out.link(xout_nn.input)
         yolo_net.passthrough.link(xout_passthrough.input) # Link passthrough to its output
 
         return pipeline
+    
 
     def _thread_loop(self):
         """The main loop for the background thread to fetch data from the camera."""
         while self._running:
-            # Get the raw data from the queues
-            in_rgb = self._rgb_queue.tryGet() # This is still useful for other purposes if needed
+            # Get the raw data from the queues (non-blocking)
+            # With maxSize=1 and blocking=False, we always get the latest frame
+            in_rgb = self._rgb_queue.tryGet()
             in_mono = self._mono_queue.tryGet()
             in_nn = self._nn_queue.tryGet()
             in_passthrough = self._passthrough_queue.tryGet() # Get the passthrough frame
@@ -140,8 +152,9 @@ class OakCamera:
                 if in_nn is not None:
                     self.latest_detections = self._nn_to_yolo_detections(in_nn)
 
-            # Small sleep to prevent a tight loop from consuming 100% CPU
-            time.sleep(0.001)
+            # Small sleep to prevent tight loop
+            # At 10 FPS, frames come every 100ms, so checking every 10ms is reasonable
+            time.sleep(0.01)
 
     def _nn_to_yolo_detections(self, nn_data) -> List[YoloDetection]:
         """

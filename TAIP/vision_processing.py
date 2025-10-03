@@ -357,8 +357,14 @@ def draw_detections_on_frame(frame: np.ndarray,
 
 
 def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners, aruco_ids, gauge_pressure,
-                                 camera_matrix=None, dist_coeffs=None, aruco_inset_bgr: Optional[np.ndarray] = None):
-    """Shows a visualisation window. Draws YOLO on RGB. If an ArUco view is provided, render side-by-side."""
+                                 camera_matrix=None, dist_coeffs=None, aruco_inset_bgr: Optional[np.ndarray] = None,
+                                 is_video_mode: bool = True):
+    """
+    Shows a visualisation window. Draws YOLO on RGB. If an ArUco view is provided, render side-by-side.
+    
+    Args:
+        is_video_mode: If True (video/live camera), auto-advances. If False (image directory), waits for keypress.
+    """
     display_left = draw_detections_on_frame(frame, detections, aruco_markers)
     
     if config.SHOW_GAUGE_OVERLAY:
@@ -410,20 +416,40 @@ def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners
         canvas[:, :left_resized.shape[1]] = left_resized
         canvas[:, left_resized.shape[1] + sep:] = right_resized
 
-        cv2.imshow(config.TEST_MODE_WINDOW_NAME, canvas)
+        final_img = canvas
     else:
         # Fallback to single left image if ArUco view not available
-        cv2.imshow(config.TEST_MODE_WINDOW_NAME, display_left)
+        final_img = display_left
+    
+    # Create named window and set to fullscreen ONLY on first call
+    window_name = config.TEST_MODE_WINDOW_NAME
+    if not hasattr(show_inference_visualisation, '_window_created'):
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        show_inference_visualisation._window_created = True
+    
+    # Display the image
+    cv2.imshow(window_name, final_img)
 
     # Determine wait time based on mode
-    if config.TEST_MODE_AUTO_ADVANCE:
-        # Video mode: wait briefly
-        wait_ms = config.TEST_MODE_DISPLAY_TIME
+    if is_video_mode:
+        # Video or live camera: brief wait to allow window updates
+        # wait_ms = config.TEST_MODE_DISPLAY_TIME
+        wait_ms = 1
     else:
-        # Image folder or live mode: wait for keypress (0 = wait indefinitely)
-        wait_ms = 1  # Small delay to allow window updates
+        # Image directory: wait indefinitely for keypress
+        wait_ms = 0
     
     key = cv2.waitKey(wait_ms) & 0xFF
+    
+    # Allow 'f' key to toggle fullscreen on/off
+    if key == ord('f'):
+        current_state = cv2.getWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN)
+        if current_state == cv2.WINDOW_FULLSCREEN:
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+        else:
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    
     return key
 
 

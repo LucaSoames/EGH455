@@ -22,7 +22,7 @@ TAIP_ROOT = PROJECT_ROOT / "TAIP"
 # Set path to a directory of images or a video file to run in testing mode.
 
 # Production (live camera feed)
-INPUT_PATH = None
+# INPUT_PATH = None
 SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed on Pi
 
 # Testing (images)
@@ -30,7 +30,7 @@ SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed
 
 # Testing (video)
 # INPUT_PATH = PROJECT_ROOT / "models/testing/videos/far_blue.mp4"
-# INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_A.mp4"
+INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_blue_B.mp4"
 # INPUT_PATH = PROJECT_ROOT / "models/testing/videos/near_silver_A.mp4"
 
 # --- Camera Configuration ---
@@ -157,5 +157,5 @@ def validate_config():
     for name, K in [("RGB", CAMERA_MATRIX_RGB), ("LEFT", CAMERA_MATRIX_LEFT)]:
         if K.shape != (3,3):
             errors.append(f"Camera matrix shape invalid for {name}")
-    # ...existing code...
+
     return True

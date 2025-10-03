@@ -6,6 +6,6 @@
 *.avi
 *.mov
 *.mkv
-/models/training/*
+/models/oak-examples/*
 /frontend/frontend/node_modules/*
 /TAIP/taip_env/*

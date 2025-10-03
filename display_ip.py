@@ -1,41 +1,13 @@
 #!/usr/bin/env python3
 
 """
-Enviro+ LCD Display Script
+Enviro+ LCD Display Script with Camera Feed using depthai
 
-This script cycles between three display pages on the LCD:
+This script cycles between display pages on the LCD:
   1. The Raspberry Pi's IP address
   2. Environmental metrics (temperature, humidity, pressure, light)
-  3. Gas sensor readings (CO, NO2, NH3) in PPM, using a calculated calibration
-
-You can cycle between pages by tapping near the proximity sensor on the Enviro+.
-
-USAGE WITH CRONTAB:
--------------------
-This script has been set to run automatically at boot using a crontab entry:
-    @reboot /home/pi/venvs/depthai_env/bin/python /home/pi/EGH455/display_ip.py
-
-As this script runs in an infinite loop to continuously update the LCD,
-you must stop it before running any other script that uses the LCD display.
-
-TO STOP THIS SCRIPT SO YOU CAN USE THE LCD WITH ANOTHER SCRIPT:
----------------------------------------------------------------
-1. Edit crontab:
-       crontab -e
-2. Comment out the @reboot line for display_ip.py by adding a # at the start:
-       #@reboot /home/pi/venvs/depthai_env/bin/python /home/pi/EGH455/display_ip.py
-3. Save and exit the editor.
-4. Reboot the Raspberry Pi:
-       sudo reboot
-5. You can now safely run your own script that uses the LCD display.
-
-CALIBRATION:
-------------
-- Before using the gas PPM display, calibrate your sensor in clean air using the provided sensor_calibration.py script.
-- Update the RO_RED, RO_OX, RO_NH3 values in this script with your calibration results.
-- Use the MiCS-6814 datasheet graphs to estimate Rs/Ro vs PPM for each gas and calculate the A and B coefficients for each channel.
-
-For more details, see the Pimoroni Enviro+ documentation and the MiCS-6814 datasheet.
+  3. Gas sensor readings (CO, NO2, NH3) in PPM
+  4. Live camera feed from OAK-D Lite
 """
 
 import time
@@ -47,6 +19,9 @@ from ltr559 import LTR559
 from bme280 import BME280
 from enviroplus import gas
 import sys
+import depthai as dai
+import cv2
+import numpy as np  # Import numpy
 
 # --- Calibration values (replace after calibration)
 RO_RED = 451379.96      # Ohms, baseline for reducing gases
@@ -163,10 +138,69 @@ def draw_gas():
     draw.text((10, 55), f"NH₃: {nh3_ppm:.1f} ppm", font=font, fill=text_colour2)
     disp.display(img)
 
-pages = [draw_ip, draw_env, draw_gas]
+def draw_camera():
+    global oak_camera, oak_queue
+    try:
+        in_jpeg = oak_queue.get()
+        jpeg_packet = in_jpeg.getData()
+        frame = cv2.imdecode(np.frombuffer(jpeg_packet, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+        # Convert the frame to PIL Image
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = Image.fromarray(frame)
+        frame = frame.resize((WIDTH, HEIGHT))
+
+        # Display the image
+        disp.display(frame)
+
+    except Exception as e:
+        print(f"Camera error: {e}")
+        draw.rectangle((0, 0, WIDTH, HEIGHT), back_colour)
+        draw.text((10, 50), f"Camera Error: {e}", font=font, fill=text_colour2)
+        disp.display(img)
+
+pages = [draw_ip, draw_env, draw_gas, draw_camera]
 page = 0
 last_tap = 0
-tap_delay = 0.7  # seconds
+tap_delay = 0.5  # seconds
+
+# Initialise OAK-D Lite camera
+try:
+    pipeline = dai.Pipeline()
+
+    # Define a source - color camera
+    cam_rgb = pipeline.createColorCamera()
+    cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+    cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+    cam_rgb.setPreviewSize(320, 320)  # Set a preview size that is a multiple of 32
+    
+
+    # Define a video encoder
+    video_encoder = pipeline.createVideoEncoder()
+    video_encoder.setProfile(dai.VideoEncoderProperties.Profile.MJPEG)
+    video_encoder.setQuality(100)  # Set quality (0-100, higher is better)
+    video_encoder.setFrameRate(10)
+
+    # Create XLinkOutputs for the color camera and the video encoder
+    xout_video = pipeline.createXLinkOut()
+    xout_video.setStreamName("video")
+
+    # Link the color camera to the video encoder
+    cam_rgb.video.link(video_encoder.input)
+    video_encoder.bitstream.link(xout_video.input)
+
+    # Connect to device with pipeline
+    oak_camera = dai.Device(pipeline)
+
+    # Output queue will be used to get the rgb frames from the output defined above
+    oak_queue = oak_camera.getOutputQueue(name="video", maxSize=4, blocking=False)
+
+except Exception as e:
+    print(f"OAK-D Lite initialisation error: {e}")
+    # Handle the error appropriately, e.g., disable the camera page
+    oak_camera = None
+    oak_queue = None
+
 
 try:
     while True:
@@ -178,4 +212,8 @@ try:
         time.sleep(0.1)
 except KeyboardInterrupt:
     disp.set_backlight(0)
+    try:
+        oak_camera.close()
+    except:
+        pass
     sys.exit(0)

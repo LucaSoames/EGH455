@@ -20,13 +20,18 @@ function TelemetryDisplay() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    // Connect to the same host that served the page (works for both localhost and remote access)
+    const socket = io(window.location.origin, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
 
     socket.on('connect', () => {
       console.log('Connected to server');
       setConnected(true);
-      // Request initial telemetry data
-      socket.emit('request_telemetry', {});  // No UAV ID needed
+      socket.emit('request_telemetry', {});
     });
 
     socket.on('disconnect', () => {
@@ -63,7 +68,7 @@ function TelemetryDisplay() {
     );
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'normal': return '#27ae60';
       case 'warning': return '#f39c12';
@@ -75,9 +80,14 @@ function TelemetryDisplay() {
   return (
     <div className="card">
       <div style={{ marginBottom: '1rem' }}>
-        <span style={{ color: getStatusColor(telemetry.status), fontWeight: 'bold' }}>
-          ● {telemetry.status.toUpperCase()}
-        </span>
+        {(() => {
+          const statusText = String(telemetry?.status ?? 'unknown').toUpperCase();
+          return (
+            <span style={{ color: getStatusColor(telemetry?.status), fontWeight: 'bold' }}>
+              ● {statusText}
+            </span>
+          );
+        })()}
         <span style={{ float: 'right', color: '#666', fontSize: '0.9rem' }}>
           THE UAV
         </span>

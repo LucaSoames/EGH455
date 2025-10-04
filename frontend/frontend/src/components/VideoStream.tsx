@@ -7,7 +7,13 @@ function VideoStream() {
   const [connected, setConnected] = useState<boolean>(false);
 
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    // Connect to the same host that served the page
+    const socket = io(window.location.origin, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
 
     socket.on('connect', () => {
       console.log('VideoStream: Connected to server');
@@ -38,12 +44,10 @@ function VideoStream() {
   const toggleStream = () => {
     setStreamActive(!streamActive);
     if (!streamActive) {
-      // Request initial frame when starting stream
-      const socket = io('http://localhost:5000');
+      const socket = io(window.location.origin);
       socket.emit('request_video_frame', {});
       socket.disconnect();
     } else {
-      // Clear frame when stopping stream
       setCurrentFrame('');
     }
   };

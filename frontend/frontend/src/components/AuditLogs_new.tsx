@@ -28,7 +28,7 @@ function AuditLogs() {
   const [filter, setFilter] = useState<string>('all');
 
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io('http://localhost:3000');
 
     socket.on('connect', () => {
       console.log('AuditLogs: Connected to server');
@@ -58,7 +58,7 @@ function AuditLogs() {
 
   // Simulate system events based on telemetry updates
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io('http://localhost:3000');
 
     socket.on('telemetry_update', (data: any) => {
       // Create system events based on telemetry data

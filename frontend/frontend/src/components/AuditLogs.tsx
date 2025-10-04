@@ -26,12 +26,17 @@ function AuditLogs() {
   const [filter, setFilter] = useState<string>('all');
 
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    // Connect to the same host that served the page
+    const socket = io(window.location.origin, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
 
     socket.on('connect', () => {
       console.log('AuditLogs: Connected to server');
       setConnected(true);
-      // Request initial system data
       socket.emit('request_system_logs', {});
       socket.emit('request_system_stats', {});
     });
@@ -56,7 +61,7 @@ function AuditLogs() {
 
   // Simulate system events based on telemetry updates
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io('http://localhost:3000');
 
     socket.on('telemetry_update', (data: any) => {
       // Create system events based on telemetry data

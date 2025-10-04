@@ -30,16 +30,20 @@ class ArucoDetection:
     orientation: Tuple[float, float, float]
 
 @dataclass
+class GasReadings:
+    """Stores gas sensor readings from the MICS6814 sensor on Enviro+ board."""
+    reducing_ohms: float      # Sensitive to CO, H2S, NH3
+    oxidising_ohms: float     # Sensitive to NO2, NO, O3
+    nh3_ohms: float          # Sensitive to NH3, H2, ethanol
+
+@dataclass
 class EnvironmentalData:
     """Stores sensor readings from the Enviro+ board."""
     temperature_c: float
     pressure_hpa: float
     humidity_rh: float
     light_lux: float
-    # Optional: You can add gas readings here if needed later
-    # gas_reducing_ohms: float
-    # gas_oxidising_ohms: float
-    # gas_nh3_ohms: float
+    gas_readings: Optional[GasReadings] = None
 
 @dataclass
 class PayloadData:

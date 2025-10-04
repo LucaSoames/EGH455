@@ -348,14 +348,14 @@ def draw_detections_on_frame(frame: np.ndarray,
         x2 = int(det.x_max * w)
         y2 = int(det.y_max * h)
         
-        # Color based on label
-        color = config.CLASS_COLORS.get(det.label, config.CLASS_COLORS["default"])
+        # Color based on label (use class_name attribute)
+        color = config.DETECTION_COLOURS.get(det.class_name, config.DETECTION_COLOURS["default"])
         
         # Draw bounding box
         cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
         
         # Draw label background
-        label_text = f"{det.label}: {det.confidence:.2f}"
+        label_text = f"{det.class_name}: {det.confidence:.2f}"
         (label_w, label_h), _ = cv2.getTextSize(
             label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
         )

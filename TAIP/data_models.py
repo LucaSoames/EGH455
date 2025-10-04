@@ -15,12 +15,30 @@ from typing import List, Optional, Tuple
 @dataclass
 class YoloDetection:
     """Represents a single object detected by the YOLOv8 model."""
-    label: str
+    class_name: str
     confidence: float
-    x_min: float
-    y_min: float
-    x_max: float
-    y_max: float
+    box: Tuple[float, float, float, float]  # (x_min, y_min, x_max, y_max)
+    
+    @property
+    def label(self) -> str:
+        """Alias for class_name to maintain compatibility."""
+        return self.class_name
+    
+    @property
+    def x_min(self) -> float:
+        return self.box[0]
+    
+    @property
+    def y_min(self) -> float:
+        return self.box[1]
+    
+    @property
+    def x_max(self) -> float:
+        return self.box[2]
+    
+    @property
+    def y_max(self) -> float:
+        return self.box[3]
 
 @dataclass
 class ArucoDetection:

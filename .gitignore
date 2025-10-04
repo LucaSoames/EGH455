@@ -1,11 +1,12 @@
 .env
 /tools/
 /venv_openvino/
-models/testing/videos
 *.mp4
 *.avi
 *.mov
 *.mkv
 frontend/frontend/node_modules
 TAIP/taip_env/*
+models/training
+models/testing/videos
 models/oak-examples

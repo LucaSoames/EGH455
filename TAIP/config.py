@@ -61,9 +61,9 @@ DETECTION_COLOURS = {
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
-GCS_LAPTOP_IP = "10.88.52.93"
+GCS_LAPTOP_IP = "192.168.86.22"
 # GCS_LAPTOP_IP = "127.0.0.1"
-GCS_URL = f"http://{GCS_LAPTOP_IP}:5000"
+GCS_URL = f"http://{GCS_LAPTOP_IP}:3000"
 POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
 REQUEST_TIMEOUT = 2.0

@@ -238,18 +238,25 @@ class LCDDisplay:
             fill=self.COLOR_BG
         )
     
-    def update_display(self, ip_address: str, frame_with_detections, env_data):
+    def update_display(self, ip_address: str, frame_with_detections, env_data, 
+                       detections=None, aruco_markers=None):
         """Update the LCD display with current data.
         
         Args:
             ip_address: System IP address
             frame_with_detections: RGB frame with YOLO detections already drawn
             env_data: EnvironmentalData object with all sensor readings
+            detections: List of YoloDetection objects (for camera tab)
+            aruco_markers: List of ArucoDetection objects (for camera tab)
         """
         if not self.lcd:
             return
         
         try:
+            # Store detections for camera tab
+            self._last_detections = detections or []
+            self._last_aruco_markers = aruco_markers or []
+            
             # Clear entire display
             self.draw.rectangle((0, 0, self.lcd.width, self.lcd.height), self.COLOR_BG)
             
@@ -278,47 +285,103 @@ class LCDDisplay:
         """Tab 0: IP Address Display"""
         self._draw_content_area()
         
-        # Center the IP address vertically in content area
+        # Center the text vertically and horizontally in content area
         content_height = self.lcd.height - y_start
         
-        # Draw "IP Address:" header
-        header_y = y_start + content_height // 3
-        self.draw.text((5, header_y), "IP Address:", 
-                      fill=self.COLOR_HEADER, font=self.font_medium)
+        # Use larger font for IP display
+        font_large = ImageFont.truetype(UserFont, 18)
         
-        # Draw IP address value
-        ip_y = header_y + 25
-        self.draw.text((5, ip_y), ip_address, 
-                      fill=self.COLOR_VALUE, font=self.font_medium)
-    
+        # Calculate text sizes
+        header_bbox = self.draw.textbbox((0, 0), "IP Address:", font=font_large)
+        header_width = header_bbox[2] - header_bbox[0]
+        header_height = header_bbox[3] - header_bbox[1]
+        
+        ip_bbox = self.draw.textbbox((0, 0), ip_address, font=font_large)
+        ip_width = ip_bbox[2] - ip_bbox[0]
+        ip_height = ip_bbox[3] - ip_bbox[1]
+        
+        # Calculate vertical centering
+        line_spacing = 10
+        total_height = header_height + line_spacing + ip_height
+        start_y = y_start + (content_height - total_height) // 2
+        
+        # Draw header centered horizontally
+        header_x = (self.lcd.width - header_width) // 2
+        self.draw.text((header_x, start_y), "IP Address:", 
+                      fill=(255, 255, 255), font=font_large)
+        
+        # Draw IP address centered horizontally (all white)
+        ip_x = (self.lcd.width - ip_width) // 2
+        ip_y = start_y + header_height + line_spacing
+        self.draw.text((ip_x, ip_y), ip_address, 
+                      fill=(255, 255, 255), font=font_large)
+
     def _draw_camera_tab(self, y_start: int, frame_with_detections):
-        """Tab 1: Live Camera Feed with Detection Overlay"""
+        """Tab 1: Live Camera Feed with Detection Overlay + Detection List"""
+        import config
+        
         if frame_with_detections is not None:
             try:
                 # Convert frame to PIL Image
                 img_pil = Image.fromarray(cv2.cvtColor(frame_with_detections, cv2.COLOR_BGR2RGB))
                 
-                # Calculate scaling to fit content area
+                # Scale to take ~1/3 of width, aligned left
                 content_height = self.lcd.height - y_start
+                target_width = self.lcd.width // 3
                 aspect_ratio = img_pil.width / img_pil.height
+                new_width = target_width
+                new_height = int(new_width / aspect_ratio)
                 
-                if aspect_ratio > (self.lcd.width / content_height):
-                    # Width-constrained
-                    new_width = self.lcd.width
-                    new_height = int(new_width / aspect_ratio)
-                else:
-                    # Height-constrained
+                # Ensure it fits vertically
+                if new_height > content_height:
                     new_height = content_height
                     new_width = int(new_height * aspect_ratio)
                 
                 img_pil = img_pil.resize((new_width, new_height))
                 
-                # Center the image
-                x_offset = (self.lcd.width - new_width) // 2
-                y_offset = y_start + (content_height - new_height) // 2
+                # Paste on left side
+                self.image.paste(img_pil, (5, y_start))
                 
-                # Paste onto black background
-                self.image.paste(img_pil, (x_offset, y_offset))
+                # Draw detection info on the right side
+                text_x = new_width + 15
+                text_y = y_start + 5
+                line_height = 15
+                
+                # Get detections from the last update
+                if hasattr(self, '_last_detections'):
+                    detections = self._last_detections
+                    
+                    # Count detections by class
+                    detection_counts = {}
+                    for det in detections:
+                        detection_counts[det.label] = detection_counts.get(det.label, 0) + 1
+                    
+                    # Draw detected classes with colors
+                    for label, count in detection_counts.items():
+                        color = config.DETECTION_COLOURS.get(label, config.DETECTION_COLOURS["default"])
+                        text = f"{label}: {count}"
+                        self.draw.text((text_x, text_y), text, 
+                                     fill=color, font=self.font_small)
+                        text_y += line_height
+                
+                # Draw ArUco marker info
+                if hasattr(self, '_last_aruco_markers') and self._last_aruco_markers:
+                    text_y += 5  # Add spacing
+                    self.draw.text((text_x, text_y), "ArUco Markers:", 
+                                 fill=self.COLOR_HEADER, font=self.font_small)
+                    text_y += line_height
+                    
+                    for marker in self._last_aruco_markers[:3]:  # Show up to 3 markers
+                        marker_text = f"ID {marker.marker_id}"
+                        self.draw.text((text_x, text_y), marker_text, 
+                                     fill=(0, 255, 0), font=self.font_small)
+                        text_y += line_height
+                        
+                        # Show distance
+                        dist_text = f"  {marker.distance_m:.2f}m"
+                        self.draw.text((text_x, text_y), dist_text, 
+                                     fill=self.COLOR_VALUE, font=self.font_small)
+                        text_y += line_height
                 
             except Exception as e:
                 print(f"Camera preview error: {e}")
@@ -332,43 +395,36 @@ class LCDDisplay:
     
     def _draw_temp_tab(self, y_start: int, env_data):
         """Tab 2: Temperature Readings (Enviro+ BME280 + Pi CPU)"""
-        y = y_start
-        line_spacing = 20
+        y = y_start + 10
+        line_spacing = 25
         
         if env_data:
             # Enviro+ Temperature
-            self.draw.text((5, y), "Enviro+ Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
-            y += line_spacing
-            
             temp_color = self.COLOR_VALUE
             if env_data.temperature_c > 40:
                 temp_color = self.COLOR_WARNING
             elif env_data.temperature_c > 50:
                 temp_color = self.COLOR_ERROR
             
-            self.draw.text((5, y), f"{env_data.temperature_c:.1f} °C", 
+            self.draw.text((5, y), f"Temperature: {env_data.temperature_c:.1f} °C", 
                          fill=temp_color, font=self.font_medium)
-            y += line_spacing + 5
+            y += line_spacing
             
             # Pi CPU Temperature
             if env_data.pi_temperature_c is not None:
-                self.draw.text((5, y), "Pi CPU Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
-                y += line_spacing
-                
                 pi_temp_color = self.COLOR_VALUE
                 if env_data.pi_temperature_c > 70:
                     pi_temp_color = self.COLOR_WARNING
                 elif env_data.pi_temperature_c > 80:
                     pi_temp_color = self.COLOR_ERROR
                 
-                self.draw.text((5, y), f"{env_data.pi_temperature_c:.1f} °C", 
+                self.draw.text((5, y), f"RPi CPU Temp: {env_data.pi_temperature_c:.1f} °C", 
                              fill=pi_temp_color, font=self.font_medium)
             else:
-                self.draw.text((5, y), "Pi CPU Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
-                y += line_spacing
-                self.draw.text((5, y), "N/A", fill=self.COLOR_ERROR, font=self.font_medium)
+                self.draw.text((5, y), "RPi CPU Temp: N/A", 
+                             fill=self.COLOR_ERROR, font=self.font_medium)
         else:
-            self.draw.text((5, y + 30), "No Temperature Data", 
+            self.draw.text((5, y + 20), "No Temperature Data", 
                          fill=self.COLOR_ERROR, font=self.font_medium)
     
     def close(self):

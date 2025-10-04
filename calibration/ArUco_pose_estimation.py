@@ -33,18 +33,23 @@ else:
 from TAIP.config import (
     ARUCO_DICT,
     ARUCO_MARKER_SIZE_M,
-    CAMERA_ARUCO_SOURCE,
-    CAMERA_MATRIX,
+    CAMERA_MATRIX_LEFT,
     CAMERA_PREVIEW_SIZE,
-    DISTORTION_COEFFS
+    DISTORTION_COEFFS_LEFT
 )
-
+CAMERA_ARUCO_SOURCE = 'CAM_B'
+DISTORTION_COEFFS = DISTORTION_COEFFS_LEFT
+CAMERA_MATRIX = CAMERA_MATRIX_LEFT
 
 def pose_estimation(frame, aruco_dict_type, matrix_coeffs, dist_coeffs):
     """
     Estimate and draw ArUco marker poses on frame.
     """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Check if frame is already grayscale
+    if len(frame.shape) == 2 or frame.shape[2] == 1:
+        gray = frame
+    else:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # switch to new‐style detector
     params = cv2.aruco.DetectorParameters()

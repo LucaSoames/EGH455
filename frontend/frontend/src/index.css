@@ -104,3 +104,27 @@ body {
 .status-normal { color: #27ae60; }
 .status-warning { color: #f39c12; }
 .status-critical { color: #e74c3c; }
+
+/* LCD Control Button Hover Effects */
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Grid button styles for LCD control */
+.lcd-tab-button {
+  transition: all 0.2s ease;
+}
+
+.lcd-tab-button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.lcd-tab-button:active:not(:disabled) {
+  transform: scale(0.98);
+}

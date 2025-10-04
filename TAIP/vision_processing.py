@@ -323,37 +323,58 @@ def detect_aruco_markers(frame: np.ndarray,
 
     return detections, corners, ids
 
-def draw_detections_on_frame(frame: np.ndarray,
+def draw_detections_on_frame(frame: np.ndarray, 
                              detections: List[YoloDetection],
-                             aruco_markers: List[ArucoDetection]) -> np.ndarray:
+                             aruco_markers: List[ArucoDetection] = None) -> np.ndarray:
     """
-    Creates a visual overlay for debugging purposes. Bounding boxes assume relative coords [0,1].
-    """
-    out = frame.copy()
-    h, w = frame.shape[:2]
-
-    for det in detections:
-        x1 = int(det.box[0] * w)
-        y1 = int(det.box[1] * h)
-        x2 = int(det.box[2] * w)
-        y2 = int(det.box[3] * h)
-        
-        # Get the colour from config, with a fallback to the default colour
-        colour = config.DETECTION_COLOURS.get(det.class_name, config.DETECTION_COLOURS['default'])
-        
-        cv2.rectangle(out, (x1, y1), (x2, y2), colour, 2)
-        cv2.putText(out, f"{det.class_name}:{det.confidence:.2f}",
-                    (x1, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 
-                    config.DETECTION_TEXT_SIZE, colour, config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
-
-    # Display ArUco marker ID and position
-    for idx, marker in enumerate(aruco_markers):
-        pos = marker.position
-        text = f"ID {marker.marker_id}: ({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) m"
-        cv2.putText(out, text, (10, 120 + idx * 60), cv2.FONT_HERSHEY_SIMPLEX, 
-                    config.DETECTION_TEXT_SIZE * 0.5, (0, 255, 255), config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
+    Draw YOLO detections and ArUco markers on a frame (for LCD display).
+    Returns a new frame with drawings, does not modify original.
     
-    return out
+    Args:
+        frame: Input BGR frame
+        detections: List of YOLO detections
+        aruco_markers: Optional list of ArUco markers
+    
+    Returns:
+        Frame with detections drawn
+    """
+    output = frame.copy()
+    h, w = output.shape[:2]
+    
+    # Draw YOLO bounding boxes
+    for det in detections:
+        x1 = int(det.x_min * w)
+        y1 = int(det.y_min * h)
+        x2 = int(det.x_max * w)
+        y2 = int(det.y_max * h)
+        
+        # Color based on label
+        color = config.CLASS_COLORS.get(det.label, config.CLASS_COLORS["default"])
+        
+        # Draw bounding box
+        cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
+        
+        # Draw label background
+        label_text = f"{det.label}: {det.confidence:.2f}"
+        (label_w, label_h), _ = cv2.getTextSize(
+            label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+        )
+        cv2.rectangle(output, (x1, y1 - label_h - 5), (x1 + label_w, y1), color, -1)
+        
+        # Draw label text
+        cv2.putText(output, label_text, (x1, y1 - 5),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    
+    # Draw ArUco markers if provided
+    if aruco_markers:
+        for marker in aruco_markers:
+            # Draw marker ID
+            center_x = int(sum(c[0] for c in marker.corners) / 4)
+            center_y = int(sum(c[1] for c in marker.corners) / 4)
+            cv2.putText(output, f"ID:{marker.marker_id}", (center_x - 20, center_y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    
+    return output
 
 
 def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners, aruco_ids, gauge_pressure,

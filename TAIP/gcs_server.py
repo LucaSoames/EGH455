@@ -73,6 +73,9 @@ class GCSServer:
         self._frame_count = 0
         self._telemetry_count = 0
         
+        # LCD control state
+        self._lcd_tab_index = 0
+        
         # Setup routes and socket handlers
         self._setup_routes()
         self._setup_socket_handlers()
@@ -149,6 +152,37 @@ class GCSServer:
                     return self._latest_telemetry
                 else:
                     return {"error": "No telemetry data available"}, 404
+        
+        @self.app.route('/api/lcd/tab', methods=['POST'])
+        def set_lcd_tab():
+            """Set LCD tab on the Pi."""
+            try:
+                data = request.get_json()
+                tab_index = data.get('tab_index')
+                
+                if tab_index is not None and 0 <= tab_index <= 2:
+                    with self._data_lock:
+                        self._lcd_tab_index = tab_index
+                    
+                    # Broadcast to Pi via SocketIO
+                    self.socketio.emit('lcd_tab_command', {'tab_index': tab_index})
+                    
+                    # Also broadcast to all web clients for state sync
+                    self.socketio.emit('lcd_tab_update', {'tab_index': tab_index})
+                    
+                    return {"status": "ok", "tab_index": tab_index}, 200
+                else:
+                    return {"error": "Invalid tab_index (must be 0-2)"}, 400
+            except Exception as e:
+                print(f"Error setting LCD tab: {e}")
+                return {"error": str(e)}, 500
+        
+        # Add GET endpoint to retrieve current LCD tab state
+        @self.app.route('/api/lcd/tab', methods=['GET'])
+        def get_lcd_tab():
+            """Get current LCD tab index."""
+            with self._data_lock:
+                return {"tab_index": self._lcd_tab_index}, 200
         
         @self.app.route('/')
         def serve_frontend():

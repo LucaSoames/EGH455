@@ -15,19 +15,21 @@ from typing import List, Optional, Tuple
 @dataclass
 class YoloDetection:
     """Represents a single object detected by the YOLOv8 model."""
-    class_name: str
+    label: str
     confidence: float
-    # Bounding box in [xmin, ymin, xmax, ymax] format with relative coordinates (0.0 to 1.0)
-    box: Tuple[float, float, float, float]
+    x_min: float
+    y_min: float
+    x_max: float
+    y_max: float
 
 @dataclass
 class ArucoDetection:
     """Represents a single detected ArUco marker and its pose."""
     marker_id: int
-    # Translation vector [x, y, z] in meters from the camera
-    position: Tuple[float, float, float]
-    # Rotation vector (Rodrigues notation)
-    orientation: Tuple[float, float, float]
+    tvec: List[float]
+    rvec: List[float]
+    distance_m: float
+    corners: List[Tuple[float, float]]
 
 @dataclass
 class GasReadings:
@@ -35,6 +37,10 @@ class GasReadings:
     reducing_ohms: float      # Sensitive to CO, H2S, NH3
     oxidising_ohms: float     # Sensitive to NO2, NO, O3
     nh3_ohms: float          # Sensitive to NH3, H2, ethanol
+    # PPM values (calibrated)
+    reducing_ppm: Optional[float] = None  # CO estimate
+    oxidising_ppm: Optional[float] = None  # NO2 estimate
+    nh3_ppm: Optional[float] = None       # NH3 estimate
 
 @dataclass
 class EnvironmentalData:
@@ -43,6 +49,7 @@ class EnvironmentalData:
     pressure_hpa: float
     humidity_rh: float
     light_lux: float
+    pi_temperature_c: Optional[float] = None  # Raspberry Pi CPU temperature
     gas_readings: Optional[GasReadings] = None
 
 @dataclass

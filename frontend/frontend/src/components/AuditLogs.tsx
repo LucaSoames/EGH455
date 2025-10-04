@@ -54,6 +54,22 @@ function AuditLogs() {
       setStats(statsData);
     });
 
+    // Listen for LCD control events
+    socket.on('lcd_tab_update', (data) => {
+      const tabNames = ['IP', 'CAM', 'TEMP'];
+      setEvents((prev: SystemEvent[]) => [
+        {
+          id: `lcd_${Date.now()}`,
+          type: 'system',
+          action: 'LCD Tab Changed',
+          details: `LCD display switched to: ${tabNames[data.tab_index] || 'Unknown'} (Tab ${data.tab_index})`,
+          timestamp: new Date().toISOString(),
+          status: 'info'
+        },
+        ...prev.slice(0, 99)
+      ]); // Keep last 100 events
+    });
+
     return () => {
       socket.disconnect();
     };

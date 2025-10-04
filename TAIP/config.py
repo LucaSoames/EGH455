@@ -137,6 +137,18 @@ DISTORTION_COEFFS_LEFT = np.array([
 TEST_MODE_WINDOW_NAME = "TAIP Test Mode Visualisation"
 TEST_MODE_DISPLAY_TIME = 100  # ms
 
+# --- Gas Sensor Calibration (from display_ip.py) ---
+# Baseline resistance values in clean air (Ohms)
+RO_RED = 451379.96      # Reducing gases (CO, H2S, NH3)
+RO_OX = 11485.55        # Oxidising gases (NO2, NO, O3)
+RO_NH3 = 347942.92      # Ammonia (NH3)
+
+# Linear coefficients for PPM conversion: ppm = A * (Rs/Ro) + B
+# Derived from MiCS-6814 datasheet graphs
+A_RED, B_RED = 300.0,  -300.0   # CO estimation
+A_OX,  B_OX  = 0.25,   -0.25    # NO2 estimation
+A_NH3, B_NH3 = -3.0,     3.0    # NH3 estimation
+
 def validate_config():
     """Basic configuration validation for test scripts."""
     errors = []

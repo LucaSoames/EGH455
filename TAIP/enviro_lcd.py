@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import time
 import cv2
+import os
 from typing import Optional
 from data_models import EnvironmentalData, GasReadings
 
@@ -43,49 +44,91 @@ class EnvironmentalSensors:
                 print("✓ Environmental sensors initialised (BME280, LTR559, MICS6814)")
             except Exception as e:
                 print(f"Environmental sensor init failed: {e}")
-
+    
+    def _get_pi_temperature(self) -> Optional[float]:
+        """Get Raspberry Pi CPU temperature."""
+        try:
+            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                temp_millidegrees = int(f.read().strip())
+                return temp_millidegrees / 1000.0
+        except Exception as e:
+            print(f"Failed to read Pi temperature: {e}")
+            return None
+    
+    def _calculate_gas_ppm(self, rs_ohms: float, ro_ohms: float, a: float, b: float) -> float:
+        """Convert resistance ratio to PPM using linear calibration."""
+        if ro_ohms <= 0:
+            return 0.0
+        ratio = rs_ohms / ro_ohms
+        ppm = a * ratio + b
+        return max(ppm, 0.0)  # No negative PPM
+    
     def get_readings(self) -> Optional[EnvironmentalData]:
         if not self.bme or not self.ltr:
             return None
         try:
-            # Get gas readings
+            # Import config here to avoid circular dependency
+            import config
+            
+            # Get gas readings with PPM conversion
             gas_data = None
             if self.gas:
                 try:
                     readings = self.gas.read_all()
+                    
+                    # Calculate PPM values using calibration from display_ip.py
+                    reducing_ppm = self._calculate_gas_ppm(
+                        readings.reducing, config.RO_RED, config.A_RED, config.B_RED
+                    )
+                    oxidising_ppm = self._calculate_gas_ppm(
+                        readings.oxidising, config.RO_OX, config.A_OX, config.B_OX
+                    )
+                    nh3_ppm = self._calculate_gas_ppm(
+                        readings.nh3, config.RO_NH3, config.A_NH3, config.B_NH3
+                    )
+                    
                     gas_data = GasReadings(
                         reducing_ohms=readings.reducing,
                         oxidising_ohms=readings.oxidising,
-                        nh3_ohms=readings.nh3
+                        nh3_ohms=readings.nh3,
+                        reducing_ppm=reducing_ppm,
+                        oxidising_ppm=oxidising_ppm,
+                        nh3_ppm=nh3_ppm
                     )
                 except Exception as e:
                     print(f"Gas sensor read error: {e}")
+            
+            # Get Pi temperature
+            pi_temp = self._get_pi_temperature()
             
             return EnvironmentalData(
                 temperature_c=self.bme.get_temperature(),
                 pressure_hpa=self.bme.get_pressure(),
                 humidity_rh=self.bme.get_humidity(),
                 light_lux=self.ltr.get_lux(),
+                pi_temperature_c=pi_temp,
                 gas_readings=gas_data
             )
         except Exception as e:
             print(f"Environmental sensor error: {e}")
             return None
-
+    
     def get_proximity(self) -> int:
-        if not self.ltr:
-            return 0
-        try:
-            return self.ltr.get_proximity()
-        except Exception:
-            return 0
+        """Get proximity sensor value for LCD mode switching."""
+        if self.ltr:
+            try:
+                return self.ltr.get_proximity()
+            except Exception:
+                pass
+        return 0
+
 
 class LCDDisplay:
-    """Handles the ST7735 LCD display with visual tab navigation."""
+    """Handles the ST7735 LCD display with 3-tab navigation."""
     
     # Display constants
     TAB_HEIGHT = 15
-    TAB_COUNT = 4
+    TAB_COUNT = 3  # Reduced from 4 to 3
     
     # Color scheme
     COLOR_BG = (0, 0, 0)
@@ -132,7 +175,13 @@ class LCDDisplay:
             except Exception as e:
                 print(f"LCD setup failed: {e}")
                 self.lcd = None
-
+    
+    def set_tab(self, tab_index: int):
+        """Set LCD tab programmatically (called from GCS command)."""
+        if 0 <= tab_index < self.TAB_COUNT:
+            self.current_mode = tab_index
+            print(f"LCD tab set to: {self.current_mode} ({self._get_tab_name(self.current_mode)})")
+    
     def update_mode(self, proximity: int):
         """Cycle through display modes when proximity sensor detects hand wave."""
         now = time.time()
@@ -143,7 +192,7 @@ class LCDDisplay:
 
     def _get_tab_name(self, mode: int) -> str:
         """Get display name for each tab."""
-        names = ["Info", "Cam", "Env", "Gas"]
+        names = ["IP", "CAM", "TEMP"]
         return names[mode] if mode < len(names) else "?"
 
     def _draw_tab_bar(self):
@@ -188,10 +237,15 @@ class LCDDisplay:
             [(0, self.TAB_HEIGHT), (self.lcd.width, self.lcd.height)],
             fill=self.COLOR_BG
         )
-
-    def update_display(self, ip_address: str, frame, detections,
-                       env_data, gauge_pressure, is_file_mode: bool):
-        """Update the LCD display with current data."""
+    
+    def update_display(self, ip_address: str, frame_with_detections, env_data):
+        """Update the LCD display with current data.
+        
+        Args:
+            ip_address: System IP address
+            frame_with_detections: RGB frame with YOLO detections already drawn
+            env_data: EnvironmentalData object with all sensor readings
+        """
         if not self.lcd:
             return
         
@@ -206,62 +260,43 @@ class LCDDisplay:
             content_y_start = self.TAB_HEIGHT + 3
             
             if self.current_mode == 0:
-                self._draw_info_tab(content_y_start, ip_address, gauge_pressure, 
-                                   detections, is_file_mode)
+                self._draw_ip_tab(content_y_start, ip_address)
             
             elif self.current_mode == 1:
-                self._draw_camera_tab(content_y_start, frame)
+                self._draw_camera_tab(content_y_start, frame_with_detections)
             
             elif self.current_mode == 2:
-                self._draw_environment_tab(content_y_start, env_data)
-            
-            elif self.current_mode == 3:
-                self._draw_gas_tab(content_y_start, env_data)
+                self._draw_temp_tab(content_y_start, env_data)
             
             # Display the final image
             self.lcd.display(self.image)
             
         except Exception as e:
             print(f"LCD update error: {e}")
-
-    def _draw_info_tab(self, y_start: int, ip_address: str, gauge_pressure, 
-                       detections, is_file_mode: bool):
-        """Tab 0: System Information"""
-        y = y_start
-        line_spacing = 18
+    
+    def _draw_ip_tab(self, y_start: int, ip_address: str):
+        """Tab 0: IP Address Display"""
+        self._draw_content_area()
         
-        # IP Address
-        self.draw.text((5, y), "IP:", fill=self.COLOR_HEADER, font=self.font_medium)
-        y += line_spacing
-        self.draw.text((5, y), ip_address, fill=self.COLOR_TEXT, font=self.font_small)
-        y += line_spacing
+        # Center the IP address vertically in content area
+        content_height = self.lcd.height - y_start
         
-        # Mode
-        mode_text = "File Mode" if is_file_mode else "Live Camera"
-        mode_color = self.COLOR_WARNING if is_file_mode else self.COLOR_SUCCESS
-        self.draw.text((5, y), f"Mode: {mode_text}", fill=mode_color, font=self.font_small)
-        y += line_spacing
+        # Draw "IP Address:" header
+        header_y = y_start + content_height // 3
+        self.draw.text((5, header_y), "IP Address:", 
+                      fill=self.COLOR_HEADER, font=self.font_medium)
         
-        # Gauge Pressure
-        if gauge_pressure is not None:
-            pressure_text = f"Pressure: {gauge_pressure:.1f} bar"
-            pressure_color = self.COLOR_WARNING if gauge_pressure < 3.0 else self.COLOR_SUCCESS
-            self.draw.text((5, y), pressure_text, fill=pressure_color, font=self.font_small)
-        else:
-            self.draw.text((5, y), "Pressure: N/A", fill=self.COLOR_ERROR, font=self.font_small)
-        y += line_spacing
-        
-        # Detection Count
-        det_count = len(detections) if detections else 0
-        det_color = self.COLOR_SUCCESS if det_count > 0 else self.COLOR_TEXT
-        self.draw.text((5, y), f"Detections: {det_count}", fill=det_color, font=self.font_small)
-
-    def _draw_camera_tab(self, y_start: int, frame):
-        """Tab 1: Live Camera Feed"""
-        if frame is not None:
+        # Draw IP address value
+        ip_y = header_y + 25
+        self.draw.text((5, ip_y), ip_address, 
+                      fill=self.COLOR_VALUE, font=self.font_medium)
+    
+    def _draw_camera_tab(self, y_start: int, frame_with_detections):
+        """Tab 1: Live Camera Feed with Detection Overlay"""
+        if frame_with_detections is not None:
             try:
                 # Convert frame to PIL Image
-                img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                img_pil = Image.fromarray(cv2.cvtColor(frame_with_detections, cv2.COLOR_BGR2RGB))
                 
                 # Calculate scaling to fit content area
                 content_height = self.lcd.height - y_start
@@ -294,82 +329,48 @@ class LCDDisplay:
             self._draw_content_area()
             self.draw.text((5, y_start + 30), "No Frame Available", 
                          fill=self.COLOR_ERROR, font=self.font_medium)
-
-    def _draw_environment_tab(self, y_start: int, env_data):
-        """Tab 2: Environmental Sensors (BME280 + LTR559)"""
+    
+    def _draw_temp_tab(self, y_start: int, env_data):
+        """Tab 2: Temperature Readings (Enviro+ BME280 + Pi CPU)"""
         y = y_start
-        line_spacing = 17
+        line_spacing = 20
         
         if env_data:
-            # Temperature
-            self.draw.text((5, y), "Temperature:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{env_data.temperature_c:.1f}°C", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
+            # Enviro+ Temperature
+            self.draw.text((5, y), "Enviro+ Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
             y += line_spacing
             
-            # Humidity
-            self.draw.text((5, y), "Humidity:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{env_data.humidity_rh:.1f}%", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
-            y += line_spacing
+            temp_color = self.COLOR_VALUE
+            if env_data.temperature_c > 40:
+                temp_color = self.COLOR_WARNING
+            elif env_data.temperature_c > 50:
+                temp_color = self.COLOR_ERROR
             
-            # Pressure
-            self.draw.text((5, y), "Pressure:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{env_data.pressure_hpa:.1f}", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
-            y += line_spacing
-            self.draw.text((100, y), "hPa", fill=self.COLOR_TEXT, font=self.font_small)
-            y += line_spacing
+            self.draw.text((5, y), f"{env_data.temperature_c:.1f} °C", 
+                         fill=temp_color, font=self.font_medium)
+            y += line_spacing + 5
             
-            # Light
-            self.draw.text((5, y), "Light:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{env_data.light_lux:.1f} lux", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
+            # Pi CPU Temperature
+            if env_data.pi_temperature_c is not None:
+                self.draw.text((5, y), "Pi CPU Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
+                y += line_spacing
+                
+                pi_temp_color = self.COLOR_VALUE
+                if env_data.pi_temperature_c > 70:
+                    pi_temp_color = self.COLOR_WARNING
+                elif env_data.pi_temperature_c > 80:
+                    pi_temp_color = self.COLOR_ERROR
+                
+                self.draw.text((5, y), f"{env_data.pi_temperature_c:.1f} °C", 
+                             fill=pi_temp_color, font=self.font_medium)
+            else:
+                self.draw.text((5, y), "Pi CPU Temp:", fill=self.COLOR_HEADER, font=self.font_medium)
+                y += line_spacing
+                self.draw.text((5, y), "N/A", fill=self.COLOR_ERROR, font=self.font_medium)
         else:
-            self.draw.text((5, y + 30), "No Environmental Data", 
+            self.draw.text((5, y + 30), "No Temperature Data", 
                          fill=self.COLOR_ERROR, font=self.font_medium)
-
-    def _draw_gas_tab(self, y_start: int, env_data):
-        """Tab 3: Gas Sensor Readings (MICS6814)"""
-        y = y_start
-        line_spacing = 17
-        
-        if env_data and env_data.gas_readings:
-            gas = env_data.gas_readings
-            
-            # Reducing gases (CO, H2S, NH3)
-            self.draw.text((5, y), "Reducing:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{gas.reducing_ohms:.0f}Ω", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
-            y += line_spacing
-            self.draw.text((5, y), "(CO,H2S,NH3)", fill=self.COLOR_TEXT, font=self.font_small)
-            y += line_spacing + 3
-            
-            # Oxidising gases (NO2, NO, O3)
-            self.draw.text((5, y), "Oxidising:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{gas.oxidising_ohms:.0f}Ω", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
-            y += line_spacing
-            self.draw.text((5, y), "(NO2,NO,O3)", fill=self.COLOR_TEXT, font=self.font_small)
-            y += line_spacing + 3
-            
-            # NH3 channel
-            self.draw.text((5, y), "NH3:", fill=self.COLOR_HEADER, font=self.font_small)
-            self.draw.text((100, y), f"{gas.nh3_ohms:.0f}Ω", 
-                         fill=self.COLOR_VALUE, font=self.font_small)
-            y += line_spacing
-            self.draw.text((5, y), "(NH3,H2,EtOH)", fill=self.COLOR_TEXT, font=self.font_small)
-            
-        else:
-            self.draw.text((5, y + 30), "No Gas Data", 
-                         fill=self.COLOR_ERROR, font=self.font_medium)
-            y += 50
-            self.draw.text((5, y), "Gas sensor warmup", 
-                         fill=self.COLOR_TEXT, font=self.font_small)
-            y += line_spacing
-            self.draw.text((5, y), "takes ~5 minutes", 
-                         fill=self.COLOR_TEXT, font=self.font_small)
-
+    
     def close(self):
         """Properly close the LCD and turn off backlight."""
         if self.lcd:

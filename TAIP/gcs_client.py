@@ -15,15 +15,16 @@ import time
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from typing import Optional, Any
+from typing import Optional, Any, Callable
+import socketio  # Add socketio for receiving commands
 
 import config
 from data_models import PayloadData
 
 class GCSClient:
     """Manages network communication with the GCS server."""
-
-    def __init__(self, max_workers: int = 2):
+    
+    def __init__(self, lcd_callback: Optional[Callable[[int], None]] = None):
         """
         Initialises the GCS client.
 
@@ -38,8 +39,41 @@ class GCSClient:
         self.session = requests.Session()
         
         # A thread pool to execute network requests asynchronously
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        print(f"GCS Client initialised for server at {self.base_url}")
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.running = True
+        
+        # SocketIO client for receiving commands
+        self.sio = socketio.Client(reconnection=True, reconnection_attempts=0)
+        self.lcd_callback = lcd_callback
+        
+        # Setup SocketIO event handlers
+        self._setup_socketio_handlers()
+        
+        # Connect to GCS server
+        try:
+            self.sio.connect(config.GCS_URL, transports=['websocket', 'polling'])
+            print(f"✓ Connected to GCS server for commands: {config.GCS_URL}")
+        except Exception as e:
+            print(f"Failed to connect to GCS for commands: {e}")
+
+    def _setup_socketio_handlers(self):
+        """Setup handlers for incoming SocketIO messages."""
+        
+        @self.sio.on('lcd_tab_command')
+        def handle_lcd_tab_command(data):
+            """Handle LCD tab change command from GCS."""
+            tab_index = data.get('tab_index')
+            if tab_index is not None and self.lcd_callback:
+                print(f"Received LCD tab command: {tab_index}")
+                self.lcd_callback(tab_index)
+        
+        @self.sio.on('connect')
+        def on_connect():
+            print("✓ GCS command channel connected")
+        
+        @self.sio.on('disconnect')
+        def on_disconnect():
+            print("✗ GCS command channel disconnected")
 
     def _send_post_request(self, url: str, **kwargs: Any) -> None:
         """Helper function to send a POST request and handle exceptions."""
@@ -84,8 +118,15 @@ class GCSClient:
         self.executor.submit(self._send_post_request, self.frame_url,
                              data=buffer.tobytes(), headers=headers, timeout=config.REQUEST_TIMEOUT)
 
-    def shutdown(self) -> None:
-        """Shuts down the thread pool executor."""
+    def shutdown(self):
+        """Gracefully shut down the GCS client."""
+        self.running = False
+        
+        # Disconnect SocketIO
+        if self.sio.connected:
+            self.sio.disconnect()
+        
+        # Shuts down the thread pool executor
         print("Shutting down GCS client...")
         self.executor.shutdown(wait=True)
         print("GCS client shut down.")

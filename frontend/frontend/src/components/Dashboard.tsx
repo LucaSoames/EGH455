@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import TelemetryDisplay from './TelemetryDisplay';
 import VideoStream from './VideoStream';
 import AuditLogs from './AuditLogs';
+import LCDControl from './LCDControl';
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'audit'>('overview');
@@ -57,13 +58,18 @@ function Dashboard() {
               <h2>Live Telemetry</h2>
               <TelemetryDisplay />
             </div>
-            
+
             <div>
               <h2>Video Stream</h2>
               <VideoStream />
             </div>
           </div>
 
+          {/* LCD Control Section - Full Width Below */}
+          <div style={{ marginTop: '2rem' }}>
+            <h2>LCD Display Control</h2>
+            <LCDControl />
+          </div>
         </>
       )}
 

@@ -26,6 +26,7 @@ from data_models import PayloadData, EnvironmentalData
 from oak_camera import OakCamera
 from vision_processing import (calculate_gauge_reading,
                                show_inference_visualisation,
+                               draw_detections_on_frame,
                                ArucoWorker)
 from file_processing import FileProcessor
 from gcs_client import GCSClient
@@ -85,7 +86,8 @@ class MainApp:
         self.aruco_worker.start()
         
         # Initialise hardware components
-        self.gcs_client = GCSClient()
+        # GCS client with LCD callback
+        self.gcs_client = GCSClient(lcd_callback=self._handle_lcd_command)
         self.env_sensors = EnvironmentalSensors()
         self.lcd_display = LCDDisplay()
         self.drill_controller = DrillController()
@@ -139,11 +141,13 @@ class MainApp:
             # GCS communication - send telemetry and frames to remote GCS server
             self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections, gauge_reading, env_data)
 
-            # Update LCD display
+            # Update LCD display - pass frame WITH detections drawn
             proximity = self.env_sensors.get_proximity()
             self.lcd_display.update_mode(proximity)
-            self.lcd_display.update_display(self.ip_address, rgb_frame, yolo_detections,
-                                            env_data, gauge_reading, bool(self.file_processor))
+            
+            # Draw detections on frame for LCD display
+            frame_with_detections = draw_detections_on_frame(rgb_frame, yolo_detections, aruco_detections)
+            self.lcd_display.update_display(self.ip_address, frame_with_detections, env_data)
 
             # Show visualisation if enabled (works for live camera, video, or images)
             if config.SHOW_LIVE_VISUALISATION:
@@ -229,6 +233,11 @@ class MainApp:
         except Exception:
             ip = "No IP Found"
         return ip
+
+    def _handle_lcd_command(self, tab_index: int):
+        """Callback for handling LCD tab change commands from GCS."""
+        if self.lcd_display:
+            self.lcd_display.set_tab(tab_index)
 
     def shutdown(self):
         """Clean up all resources."""

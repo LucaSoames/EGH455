@@ -206,53 +206,6 @@ class GCSServer:
                 print(f"[CATCH-ALL] ERROR: Frontend build not found at {frontend_path}")
                 return {"error": "Frontend build not found"}, 404
         
-        @self.app.route('/debug/paths')
-        def debug_paths():
-            """Debug endpoint to check file paths."""
-            try:
-                frontend_path = PROJECT_ROOT / "frontend" / "frontend" / "build"
-                static_dir = frontend_path / "static"
-                
-                result = {
-                    "project_root": str(PROJECT_ROOT),
-                    "project_root_exists": PROJECT_ROOT.exists(),
-                    "frontend_path": str(frontend_path),
-                    "frontend_exists": frontend_path.exists(),
-                    "static_dir": str(static_dir),
-                    "static_exists": static_dir.exists(),
-                }
-                
-                # List frontend contents
-                if frontend_path.exists():
-                    try:
-                        result["frontend_contents"] = [f.name for f in frontend_path.iterdir()]
-                    except Exception as e:
-                        result["frontend_contents_error"] = str(e)
-                
-                # List static contents
-                if static_dir.exists():
-                    try:
-                        static_files = []
-                        for f in static_dir.rglob("*"):
-                            if f.is_file():
-                                try:
-                                    rel_path = f.relative_to(static_dir)
-                                    static_files.append(str(rel_path))
-                                except:
-                                    static_files.append(f.name)
-                        result["static_contents"] = static_files[:30]  # First 30 files
-                    except Exception as e:
-                        result["static_contents_error"] = str(e)
-                
-                return jsonify(result)
-                
-            except Exception as e:
-                import traceback
-                return jsonify({
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }), 500
-
     def _setup_socket_handlers(self):
         """Setup SocketIO event handlers."""
         

@@ -179,15 +179,25 @@ class ArucoWorker:
         except Exception:
             pass
 
-        # Build typed detections
+        # Build typed detections with correct field names
         if rvecs is not None and tvecs is not None:
             for i, marker_id in enumerate(ids.flatten()):
                 tvec = tvecs[i][0]
                 rvec = rvecs[i][0]
+                
+                # Calculate distance
+                distance_m = float(np.linalg.norm(tvec))
+                
+                # Get corner points
+                corner_pts = corners[i].reshape(-1, 2)
+                corner_list = [(float(pt[0]), float(pt[1])) for pt in corner_pts]
+                
                 detections.append(ArucoDetection(
                     marker_id=int(marker_id),
-                    position=(float(tvec[0]), float(tvec[1]), float(tvec[2])),
-                    orientation=(float(rvec[0]), float(rvec[1]), float(rvec[2]))
+                    tvec=[float(tvec[0]), float(tvec[1]), float(tvec[2])],
+                    rvec=[float(rvec[0]), float(rvec[1]), float(rvec[2])],
+                    distance_m=distance_m,
+                    corners=corner_list
                 ))
 
         return detections, corners, ids, rvecs, tvecs, vis
@@ -348,31 +358,26 @@ def draw_detections_on_frame(frame: np.ndarray,
         x2 = int(det.x_max * w)
         y2 = int(det.y_max * h)
         
-        # Color based on label (use class_name attribute)
+        # Color based on class_name
         color = config.DETECTION_COLOURS.get(det.class_name, config.DETECTION_COLOURS["default"])
         
         # Draw bounding box
         cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
         
-        # Draw label background
-        label_text = f"{det.class_name}: {det.confidence:.2f}"
-        (label_w, label_h), _ = cv2.getTextSize(
-            label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-        )
-        cv2.rectangle(output, (x1, y1 - label_h - 5), (x1 + label_w, y1), color, -1)
-        
         # Draw label text
-        cv2.putText(output, label_text, (x1, y1 - 5),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(output, f"{det.class_name}:{det.confidence:.2f}",
+                    (x1, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 
+                    config.DETECTION_TEXT_SIZE, color, config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
     
-    # Draw ArUco markers if provided
+    # Display ArUco marker ID, and 3D position (x, y, z) in meters (3D translation vector)
     if aruco_markers:
-        for marker in aruco_markers:
-            # Draw marker ID
-            center_x = int(sum(c[0] for c in marker.corners) / 4)
-            center_y = int(sum(c[1] for c in marker.corners) / 4)
-            cv2.putText(output, f"ID:{marker.marker_id}", (center_x - 20, center_y),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        for idx, marker in enumerate(aruco_markers):
+            # Extract position from tvec
+            tvec = marker.tvec
+            text = f"ID {marker.marker_id}: ({tvec[0]:.2f}, {tvec[1]:.2f}, {tvec[2]:.2f}) m"
+            cv2.putText(output, text, (10, 120 + idx * 60), cv2.FONT_HERSHEY_SIMPLEX, 
+                        config.DETECTION_TEXT_SIZE, (0, 255, 255), 
+                        config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
     
     return output
 

@@ -367,20 +367,14 @@ class LCDDisplay:
                 # Draw ArUco marker info
                 if hasattr(self, '_last_aruco_markers') and self._last_aruco_markers:
                     text_y += 5  # Add spacing
-                    self.draw.text((text_x, text_y), "ArUco Markers:", 
-                                 fill=self.COLOR_HEADER, font=self.font_small)
-                    text_y += line_height
                     
                     for marker in self._last_aruco_markers[:3]:  # Show up to 3 markers
-                        marker_text = f"ID {marker.marker_id}"
+                        # ArUco ID display text
+                        tvec = marker.tvec
+                        marker_text = f"ArUco ID: {marker.marker_id}"
+                        # marker_text = f"ID {marker.marker_id}: ({tvec[0]:.1f},{tvec[1]:.1f},{tvec[2]:.1f})m" # Format: "ID #: (x,y,z)m"
                         self.draw.text((text_x, text_y), marker_text, 
-                                     fill=(0, 255, 0), font=self.font_small)
-                        text_y += line_height
-                        
-                        # Show distance
-                        dist_text = f"  {marker.distance_m:.2f}m"
-                        self.draw.text((text_x, text_y), dist_text, 
-                                     fill=self.COLOR_VALUE, font=self.font_small)
+                                     fill=(255, 255, 255), font=self.font_small)
                         text_y += line_height
                 
             except Exception as e:

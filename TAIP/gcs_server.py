@@ -55,15 +55,20 @@ class GCSServer:
         self.app = Flask(__name__, static_folder=str(static_path), static_url_path='/static')
         self.app.config['SECRET_KEY'] = 'taip_gcs_secret_2024'
         
+        # Disable Flask request logging
+        import logging
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
+        
         # Enable CORS for all domains
         CORS(self.app)
         
-        # Initialize SocketIO with CORS support
+        # Initialize SocketIO with CORS support (disable verbose logging)
         self.socketio = SocketIO(
             self.app, 
             cors_allowed_origins="*",
-            logger=True,
-            engineio_logger=True
+            logger=False,  # Disable SocketIO logging
+            engineio_logger=False  # Disable Engine.IO logging
         )
         
         # Thread-safe data storage
@@ -76,6 +81,10 @@ class GCSServer:
         # LCD control state
         self._lcd_tab_index = 0
         
+        # Add counters for periodic status updates
+        self._last_status_time = time.time()
+        self._status_interval = 5.0  # Print status every 5 seconds
+        
         # Setup routes and socket handlers
         self._setup_routes()
         self._setup_socket_handlers()
@@ -83,16 +92,21 @@ class GCSServer:
         print(f"=" * 60)
         print(f"GCS Server initialized on {host}:{port}")
         print(f"=" * 60)
-    
+
+    def _print_periodic_status(self):
+        """Print status update periodically instead of every frame/telemetry."""
+        now = time.time()
+        if (now - self._last_status_time) >= self._status_interval:
+            print(f"[STATUS] Telemetry: {self._telemetry_count} | Frames: {self._frame_count}")
+            self._last_status_time = now
+
     def _setup_routes(self):
         """Setup Flask HTTP routes."""
         
-        # Debug: Print frontend path on startup
+        # Debug: Print frontend path on startup (only once)
         frontend_path = PROJECT_ROOT / "frontend" / "frontend" / "build"
         print(f"Frontend build path: {frontend_path}")
         print(f"Frontend path exists: {frontend_path.exists()}")
-        if frontend_path.exists():
-            print(f"Frontend contents: {list(frontend_path.iterdir())[:5]}")
         
         # API routes first (before catch-all)
         @self.app.route('/api/health')
@@ -115,13 +129,17 @@ class GCSServer:
                         self._latest_telemetry = data
                         self._telemetry_count += 1
                     
-                    # Broadcast to all WebSocket clients
+                    # Broadcast to WebSocket clients
                     self.socketio.emit('telemetry_update', data)
+                    
+                    # Print periodic status instead of every telemetry
+                    self._print_periodic_status()
+                    
                     return {"status": "ok"}, 200
                 else:
                     return {"error": "No data received"}, 400
             except Exception as e:
-                print(f"Error receiving telemetry: {e}")
+                print(f"[ERROR] Telemetry error: {e}")
                 return {"error": str(e)}, 500
         
         @self.app.route('/frame', methods=['POST'])
@@ -137,22 +155,26 @@ class GCSServer:
                     # Convert to base64 and broadcast to WebSocket clients
                     frame_b64 = base64.b64encode(frame_data).decode('utf-8')
                     self.socketio.emit('video_frame', {'frame': frame_b64})
+                    
+                    # Print periodic status instead of every frame
+                    self._print_periodic_status()
+                    
                     return {"status": "ok"}, 200
                 else:
                     return {"error": "No frame data received"}, 400
             except Exception as e:
-                print(f"Error receiving frame: {e}")
+                print(f"[ERROR] Frame error: {e}")
                 return {"error": str(e)}, 500
-        
+
         @self.app.route('/api/telemetry')
         def get_telemetry():
             """HTTP endpoint to get latest telemetry data."""
             with self._data_lock:
                 if self._latest_telemetry:
-                    return self._latest_telemetry
+                    return self._latest_telemetry, 200
                 else:
-                    return {"error": "No telemetry data available"}, 404
-        
+                    return {"error": "No telemetry available"}, 404
+
         @self.app.route('/api/lcd/tab', methods=['POST'])
         def set_lcd_tab():
             """Set LCD tab on the Pi."""
@@ -170,82 +192,57 @@ class GCSServer:
                     # Also broadcast to all web clients for state sync
                     self.socketio.emit('lcd_tab_update', {'tab_index': tab_index})
                     
+                    print(f"[LCD] Tab changed to: {tab_index}")
+                    
                     return {"status": "ok", "tab_index": tab_index}, 200
                 else:
                     return {"error": "Invalid tab_index (must be 0-2)"}, 400
             except Exception as e:
-                print(f"Error setting LCD tab: {e}")
+                print(f"[ERROR] LCD tab error: {e}")
                 return {"error": str(e)}, 500
-        
+
         # Add GET endpoint to retrieve current LCD tab state
         @self.app.route('/api/lcd/tab', methods=['GET'])
         def get_lcd_tab():
             """Get current LCD tab index."""
             with self._data_lock:
                 return {"tab_index": self._lcd_tab_index}, 200
-        
+
         @self.app.route('/')
         def serve_frontend():
             """Serve the React frontend index.html."""
             frontend_path = PROJECT_ROOT / "frontend" / "frontend" / "build"
             index_path = frontend_path / "index.html"
-            print(f"[ROOT] Serving index.html")
-            print(f"[ROOT] Frontend path: {frontend_path}")
-            print(f"[ROOT] Frontend exists: {frontend_path.exists()}")
-            print(f"[ROOT] Index path: {index_path}")
-            print(f"[ROOT] Index exists: {index_path.exists()}")
-            
-            if not frontend_path.exists():
-                error_msg = {
-                    "error": "Frontend build not found",
-                    "message": "Please run 'npm run build' in the frontend directory",
-                    "path": str(frontend_path)
-                }
-                print(f"[ROOT] ERROR: {error_msg}")
-                return error_msg, 404
-            
-            if not index_path.exists():
-                error_msg = {
-                    "error": "index.html not found",
-                    "path": str(index_path)
-                }
-                print(f"[ROOT] ERROR: {error_msg}")
-                return error_msg, 404
-            
-            try:
+            if index_path.exists():
                 return send_from_directory(str(frontend_path), 'index.html')
-            except Exception as e:
-                print(f"[ROOT] ERROR: {e}")
-                return {"error": str(e)}, 500
-        
+            else:
+                print(f"[ERROR] Frontend build not found at {frontend_path}")
+                return {"error": "Frontend build not found"}, 404
+
         # Catch-all route for client-side routing (must be last)
         @self.app.route('/<path:path>')
         def serve_other_files(path):
             """Serve other files (manifest, favicon, etc) from the React build directory."""
             frontend_path = PROJECT_ROOT / "frontend" / "frontend" / "build"
             requested_file = frontend_path / path
-            print(f"[CATCH-ALL] Requested: /{path}")
-            print(f"[CATCH-ALL] Full path: {requested_file}")
-            print(f"[CATCH-ALL] Exists: {requested_file.exists()}")
+            
             if frontend_path.exists():
                 try:
                     result = send_from_directory(str(frontend_path), path)
-                    print(f"[CATCH-ALL] Successfully served: {path}")
                     return result
-                except Exception as e:
+                except Exception:
                     # If file not found, return index.html for client-side routing
-                    print(f"[CATCH-ALL] File not found, serving index.html. Error: {e}")
                     return send_from_directory(str(frontend_path), 'index.html')
             else:
-                print(f"[CATCH-ALL] ERROR: Frontend build not found at {frontend_path}")
+                print(f"[ERROR] Frontend build not found at {frontend_path}")
                 return {"error": "Frontend build not found"}, 404
-        
+
     def _setup_socket_handlers(self):
         """Setup SocketIO event handlers."""
         
         @self.socketio.on('connect')
         def handle_connect():
-            print(f"Client connected: {request.sid}")
+            print(f"[SOCKET] Client connected: {request.sid}")
             emit('connected', {'status': 'Connected to GCS server'})
             
             # Send latest data if available
@@ -258,7 +255,7 @@ class GCSServer:
         
         @self.socketio.on('disconnect')
         def handle_disconnect():
-            print(f"Client disconnected: {request.sid}")
+            print(f"[SOCKET] Client disconnected: {request.sid}")
         
         @self.socketio.on('request_telemetry')
         def handle_request_telemetry():
@@ -278,7 +275,7 @@ class GCSServer:
                     emit('video_frame', {'frame': frame_b64})
                 else:
                     emit('error', {'message': 'No video frame available'})
-    
+
     def run(self, debug: bool = False):
         """Run the GCS server."""
         print(f"Starting GCS server...")
@@ -294,7 +291,8 @@ class GCSServer:
             host=self.host, 
             port=self.port, 
             debug=debug,
-            use_reloader=False
+            use_reloader=False,
+            log_output=False  # Suppress socketio logs
         )
 
 def main():

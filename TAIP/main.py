@@ -27,6 +27,7 @@ from oak_camera import OakCamera
 from vision_processing import (calculate_gauge_reading,
                                show_inference_visualisation,
                                draw_detections_on_frame,
+                               draw_gauge_debug,
                                ArucoWorker)
 from file_processing import FileProcessor
 from gcs_client import GCSClient
@@ -116,14 +117,13 @@ class MainApp:
 
             frame_count += 1
 
-            # Non-blocking ArUco: feed the worker and read last result
+            # ArUco detection
             try:
                 if self.file_processor:
-                    # Test mode: worker configured for RGB intrinsics
                     self.aruco_worker.update_frame(rgb_frame)
                 else:
-                    # Live mode: worker configured for LEFT intrinsics
                     self.aruco_worker.update_frame(mono_frame)
+                
                 aruco_detections, aruco_corners, aruco_ids, _, _, aruco_vis = self.aruco_worker.get_latest()
                 if aruco_detections is None:
                     aruco_detections, aruco_corners, aruco_ids, aruco_vis = [], None, None, None
@@ -138,32 +138,55 @@ class MainApp:
             if self.drill_controller:
                 self.drill_controller.control_drill(gauge_reading)
             
-            # GCS communication - send telemetry and frames to remote GCS server
-            self._handle_gcs_communication(rgb_frame, yolo_detections, aruco_detections, gauge_reading, env_data)
+            # Create fully annotated frame for GCS and visualization
+            # This includes YOLO boxes, ArUco markers, detection count, and gauge overlay
+            annotated_frame = draw_detections_on_frame(rgb_frame, yolo_detections, aruco_detections)
+            
+            # Add gauge overlay if enabled (affects both GCS and Pi visualization)
+            if config.SHOW_GAUGE_OVERLAY:
+                annotated_frame = draw_gauge_debug(annotated_frame, yolo_detections)
+            
+            # Add detection count in top left
+            cv2.putText(annotated_frame, f"Detections: {len(yolo_detections)}", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE,
+                       (255, 255, 255), config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
+            
+            # Add gauge pressure in top right
+            if gauge_reading is not None:
+                text = f"Pressure: {gauge_reading:.2f} bar"
+                text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 
+                                           config.DETECTION_TEXT_SIZE, 
+                                           config.DETECTION_TEXT_THICKNESS)[0]
+                text_x = annotated_frame.shape[1] - text_size[0] - 10
+                cv2.putText(annotated_frame, text, (text_x, 60), 
+                           cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE,
+                           (255, 255, 255), config.DETECTION_TEXT_THICKNESS, cv2.LINE_AA)
+            
+            # GCS communication - send the SAME annotated frame
+            self._handle_gcs_communication(annotated_frame, yolo_detections, aruco_detections, 
+                                          gauge_reading, env_data)
 
-            # Update LCD display - pass frame WITH detections drawn
+            # Update LCD display
             proximity = self.env_sensors.get_proximity()
             self.lcd_display.update_mode(proximity)
-            
-            # Draw detections on frame for LCD display
-            frame_with_detections = draw_detections_on_frame(rgb_frame, yolo_detections, aruco_detections)
-            self.lcd_display.update_display(self.ip_address, frame_with_detections, env_data)
+            self.lcd_display.update_display(self.ip_address, annotated_frame, env_data, 
+                                           detections=yolo_detections, aruco_markers=aruco_detections)
 
-            # Show visualisation if enabled (works for live camera, video, or images)
+            # Show visualization window on Pi (if enabled)
             if config.SHOW_LIVE_VISUALISATION:
-                # Determine camera matrix for the RGB frame
+                # Determine camera matrix
                 if self.file_processor:
                     K = config.CAMERA_MATRIX_RGB
                     D = config.DISTORTION_COEFFS_RGB
                 else:
-                    K = config.CAMERA_MATRIX_RGB
-                    D = config.DISTORTION_COEFFS_RGB
+                    K = config.CAMERA_MATRIX_LEFT
+                    D = config.DISTORTION_COEFFS_LEFT
                 
                 key = show_inference_visualisation(
-                    rgb_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
+                    annotated_frame, yolo_detections, aruco_detections, aruco_corners, aruco_ids, gauge_reading,
                     camera_matrix=K, dist_coeffs=D,
                     aruco_inset_bgr=aruco_vis,
-                    is_video_mode=self.is_video_mode  # Pass the mode flag
+                    is_video_mode=self.is_video_mode
                 )
                 
                 # Handle quit key (q or ESC)
@@ -201,7 +224,7 @@ class MainApp:
             yolo_detections = self.camera.get_latest_detections()
             return rgb_frame, mono_frame, yolo_detections
 
-    def _handle_gcs_communication(self, rgb_frame, yolo_detections, aruco_detections, 
+    def _handle_gcs_communication(self, annotated_frame, yolo_detections, aruco_detections, 
                                 gauge_reading, env_data):
         """Handle GCS communication at controlled rates."""
         now = time.time()
@@ -218,9 +241,9 @@ class MainApp:
             self.gcs_client.send_data(payload)
             self.last_telem_time = now
 
-        # Send video frame
+        # Send the pre-annotated frame (same as Pi visualization)
         if (now - self.last_frame_time) >= (1.0 / config.POST_FRAME_FPS):
-            self.gcs_client.send_frame(rgb_frame)
+            self.gcs_client.send_frame(annotated_frame)
             self.last_frame_time = now
 
     def _get_ip_address(self) -> str:

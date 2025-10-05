@@ -386,32 +386,19 @@ def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners
                                  camera_matrix=None, dist_coeffs=None, aruco_inset_bgr: Optional[np.ndarray] = None,
                                  is_video_mode: bool = True):
     """
-    Shows a visualisation window. Draws YOLO on RGB. If an ArUco view is provided, render side-by-side.
+    Shows a visualisation window with side-by-side RGB and ArUco views.
     
     Args:
+        frame: Pre-annotated RGB frame (already has YOLO boxes, gauge overlay, text)
+        aruco_inset_bgr: ArUco visualization frame from worker
         is_video_mode: If True (video/live camera), auto-advances. If False (image directory), waits for keypress.
     """
-    display_left = draw_detections_on_frame(frame, detections, aruco_markers)
-    
-    if config.SHOW_GAUGE_OVERLAY:
-        display_left = draw_gauge_debug(display_left, detections)
+    # Use the pre-annotated frame as-is (left side)
+    display_left = frame.copy()
     
     lh, lw = display_left.shape[:2]
-    
-    if gauge_pressure is not None:
-        # Position gauge reading in top right corner of the left image
-        text = f"Pressure: {gauge_pressure:.2f} bar"
-        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, config.DETECTION_TEXT_THICKNESS)[0]
-        text_x = lw - text_size[0] - 10
-        cv2.putText(display_left, text, (text_x, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                    (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
-    
-    # Keep detection count in top left corner (left image)
-    cv2.putText(display_left, f"Detections: {len(detections)}",
-                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, 
-                (255, 255, 255), config.DETECTION_TEXT_THICKNESS)
 
-    # If we have the ArUco view, put it side-by-side with the RGB/YOLO view
+    # If we have the ArUco view, put it side-by-side with the RGB view
     if aruco_inset_bgr is not None:
         right_img = aruco_inset_bgr
         if right_img.ndim == 2:
@@ -459,11 +446,8 @@ def show_inference_visualisation(frame, detections, aruco_markers, aruco_corners
 
     # Determine wait time based on mode
     if is_video_mode:
-        # Video or live camera: brief wait to allow window updates
-        # wait_ms = config.TEST_MODE_DISPLAY_TIME
         wait_ms = 1
     else:
-        # Image directory: wait indefinitely for keypress
         wait_ms = 0
     
     key = cv2.waitKey(wait_ms) & 0xFF

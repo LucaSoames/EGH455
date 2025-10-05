@@ -18,6 +18,7 @@ Usage:
 
 import os
 import sys
+import signal
 import argparse
 import cv2
 import json
@@ -37,6 +38,7 @@ from flask_cors import CORS
 try:
     # import config
     # PROJECT_ROOT = config.PROJECT_ROOT
+    # Uncomment above if config is available
     PROJECT_ROOT = Path(__file__).parent.parent
 except ImportError:
     # Running on laptop without config
@@ -48,6 +50,7 @@ class GCSServer:
     def __init__(self, host: str = '0.0.0.0', port: int = 5000):
         self.host = host
         self.port = port
+        self.running = True
         
         frontend_path = PROJECT_ROOT / "frontend" / "frontend" / "build"
         static_path = frontend_path / "static"
@@ -285,15 +288,47 @@ class GCSServer:
         print(f"  POST /frame      - Receive video frames from Pi")
         print(f"  GET  /api/health - Health check")
         print(f"=" * 60)
+        print(f"Press CTRL+C to stop the server gracefully")
+        print(f"=" * 60)
         
-        self.socketio.run(
-            self.app, 
-            host=self.host, 
-            port=self.port, 
-            debug=debug,
-            use_reloader=False,
-            log_output=False  # Suppress socketio logs
-        )
+        try:
+            self.socketio.run(
+                self.app, 
+                host=self.host, 
+                port=self.port, 
+                debug=debug,
+                use_reloader=False,
+                log_output=False  # Suppress socketio logs
+            )
+        except KeyboardInterrupt:
+            self.shutdown()
+    
+    def shutdown(self):
+        """Gracefully shutdown the GCS server."""
+        if not self.running:
+            return
+            
+        print("\n" + "=" * 60)
+        print("Shutting down GCS server...")
+        print("=" * 60)
+        
+        self.running = False
+        
+        # Print final statistics
+        with self._data_lock:
+            print(f"Final Statistics:")
+            print(f"  Total Telemetry Received: {self._telemetry_count}")
+            print(f"  Total Frames Received: {self._frame_count}")
+        
+        # Notify all connected clients
+        try:
+            self.socketio.emit('server_shutdown', {'message': 'Server is shutting down'})
+            time.sleep(0.5)  # Give clients time to receive the message
+        except Exception as e:
+            print(f"Error notifying clients: {e}")
+        
+        print("✓ GCS server shutdown complete")
+        print("=" * 60)
 
 def main():
     parser = argparse.ArgumentParser(description='GCS Server for TAIP System')
@@ -305,12 +340,21 @@ def main():
     
     server = GCSServer(host=args.host, port=args.port)
     
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(signum, frame):
+        print(f"\n[SIGNAL] Received signal {signum}")
+        server.shutdown()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)   # Handle CTRL+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Handle kill command
+    
     try:
         server.run(debug=args.debug)
-    except KeyboardInterrupt:
-        print("\nShutting down GCS server...")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"[ERROR] Server error: {e}")
+        traceback.print_exc()
+        server.shutdown()
         sys.exit(1)
 
 if __name__ == '__main__':

@@ -132,7 +132,7 @@ class GCSServer:
                         self._latest_telemetry = data
                         self._telemetry_count += 1
                     
-                    # Broadcast to WebSocket clients
+                    # Broadcast the FULL telemetry data to WebSocket clients
                     self.socketio.emit('telemetry_update', data)
                     
                     # Print periodic status instead of every telemetry

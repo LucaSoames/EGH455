@@ -77,7 +77,12 @@ function AuditLogs() {
 
   // Simulate system events based on telemetry updates
   useEffect(() => {
-    const socket = io('http://localhost:3000');
+    const socket = io(window.location.origin, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
 
     socket.on('telemetry_update', (data: any) => {
       // Create system events based on telemetry data
@@ -110,12 +115,13 @@ function AuditLogs() {
         });
       }
 
-      // Environmental events
-      if (data.temperature != null) {
+      // Environmental events (from environmental_data object)
+      const env = data.environmental_data;
+      if (env?.temperature_c != null) {
         let status: 'info' | 'warning' | 'error' | 'success' = 'info';
-        if (data.temperature > 40) {
+        if (env.temperature_c > 40) {
           status = 'warning';
-        } else if (data.temperature < 0) {
+        } else if (env.temperature_c < 0) {
           status = 'error';
         } else {
           status = 'info';
@@ -124,10 +130,34 @@ function AuditLogs() {
         newEvents.push({
           id: `temp_${Date.now()}`,
           type: 'sensor',
-          action: 'Temperature Update',
-          details: `Temperature: ${data.temperature.toFixed(1)}°C, Humidity: ${data.humidity?.toFixed(1) || 'N/A'}%`,
+          action: 'Environmental Update',
+          details: `Temp: ${env.temperature_c.toFixed(1)}°C, Humidity: ${env.humidity_rh?.toFixed(1) || 'N/A'}%, Pressure: ${env.pressure_hpa?.toFixed(1) || 'N/A'} hPa`,
           timestamp,
           status
+        });
+      }
+
+      // Detection events
+      if (data.yolo_detections?.length > 0) {
+        newEvents.push({
+          id: `detection_${Date.now()}`,
+          type: 'vision',
+          action: 'Object Detection',
+          details: `${data.yolo_detections.length} objects detected`,
+          timestamp,
+          status: 'info'
+        });
+      }
+
+      // ArUco events
+      if (data.aruco_markers?.length > 0) {
+        newEvents.push({
+          id: `aruco_${Date.now()}`,
+          type: 'vision',
+          action: 'ArUco Marker Detected',
+          details: `Marker ID ${data.aruco_markers[0].marker_id} at ${data.aruco_markers[0].distance_m.toFixed(2)}m`,
+          timestamp,
+          status: 'success'
         });
       }
 

@@ -258,7 +258,7 @@ class GCSServer:
             print(f"[SOCKET] Client disconnected: {request.sid}")
         
         @self.socketio.on('request_telemetry')
-        def handle_request_telemetry():
+        def handle_request_telemetry(data=None):
             """Handle client requests for telemetry data."""
             with self._data_lock:
                 if self._latest_telemetry:
@@ -267,7 +267,7 @@ class GCSServer:
                     emit('error', {'message': 'No telemetry data available'})
         
         @self.socketio.on('request_video_frame')
-        def handle_request_video_frame():
+        def handle_request_video_frame(data=None):
             """Handle client requests for video frames."""
             with self._data_lock:
                 if self._latest_frame:

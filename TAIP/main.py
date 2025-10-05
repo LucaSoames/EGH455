@@ -171,7 +171,7 @@ class MainApp:
             self.lcd_display.update_mode(proximity)
             self.lcd_display.update_display(self.ip_address, annotated_frame, env_data, 
                                            detections=yolo_detections, aruco_markers=aruco_detections)
-
+            
             # Show visualization window on Pi (if enabled)
             if config.SHOW_LIVE_VISUALISATION:
                 # Determine camera matrix
@@ -193,9 +193,11 @@ class MainApp:
                 if key == ord('q') or key == 27:
                     print("Quit requested by user")
                     break
-                if frame_count % 1 == 0:
-                    pressure_txt = f"{gauge_reading:.2f}" if gauge_reading is not None else "N/A"
-                    print(f"Frame {frame_count}: {len(yolo_detections)} detections, {len(aruco_detections)} markers, pressure: {pressure_txt} bar")
+            
+            # Print detection summary periodically (every 30 frames, regardless of visualization)
+            if frame_count % config.CAMERA_FPS == 0:
+                pressure_txt = f"{gauge_reading:.2f}" if gauge_reading is not None else "N/A"
+                print(f"[Frame {frame_count}] Detections: {len(yolo_detections)} | ArUco: {len(aruco_detections)} | Pressure: {pressure_txt} bar")
     
             # Reset drill state if needed (when pressure is back above threshold + margin)
             if (self.drill_controller.drilling_complete and 

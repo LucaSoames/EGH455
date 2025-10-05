@@ -23,7 +23,7 @@ TAIP_ROOT = PROJECT_ROOT / "TAIP"
 
 # Production (live camera feed)
 INPUT_PATH = None
-SHOW_LIVE_VISUALISATION = True # Show live camera feed with detections overlayed on Pi
+SHOW_LIVE_VISUALISATION = False # Show live camera feed with detections overlayed on Pi
 
 # Testing (images)
 # INPUT_PATH = PROJECT_ROOT / "models/testing/images"

@@ -176,6 +176,18 @@ class LCDDisplay:
                 print(f"LCD setup failed: {e}")
                 self.lcd = None
     
+    @staticmethod
+    def _bgr_to_rgb(bgr_color):
+        """Convert BGR color tuple to RGB for PIL.
+        
+        Args:
+            bgr_color: Tuple of (B, G, R) values
+            
+        Returns:
+            Tuple of (R, G, B) values
+        """
+        return (bgr_color[2], bgr_color[1], bgr_color[0])
+
     def set_tab(self, tab_index: int):
         """Set LCD tab programmatically (called from GCS command)."""
         if 0 <= tab_index < self.TAB_COUNT:
@@ -189,55 +201,41 @@ class LCDDisplay:
             self.current_mode = (self.current_mode + 1) % self.TAB_COUNT
             self.last_tap_time = now
             print(f"LCD mode changed to: {self.current_mode} ({self._get_tab_name(self.current_mode)})")
-
+    
     def _get_tab_name(self, mode: int) -> str:
         """Get display name for each tab."""
         names = ["IP", "CAM", "TEMP"]
         return names[mode] if mode < len(names) else "?"
-
+    
     def _draw_tab_bar(self):
         """Draw the tab navigation bar at the top of the display."""
         tab_width = self.lcd.width // self.TAB_COUNT
         
         for i in range(self.TAB_COUNT):
-            x_start = i * tab_width
-            is_active = (i == self.current_mode)
+            x1 = i * tab_width
+            x2 = x1 + tab_width
             
-            # Draw tab background
-            tab_color = self.COLOR_TAB_ACTIVE if is_active else self.COLOR_TAB_INACTIVE
-            self.draw.rectangle(
-                [(x_start, 0), (x_start + tab_width - 1, self.TAB_HEIGHT)],
-                fill=tab_color
-            )
+            # Tab background
+            if i == self.current_mode:
+                self.draw.rectangle((x1, 0, x2, self.TAB_HEIGHT), self.COLOR_TAB_ACTIVE)
+                text_color = self.COLOR_TAB_TEXT_ACTIVE
+            else:
+                self.draw.rectangle((x1, 0, x2, self.TAB_HEIGHT), self.COLOR_TAB_INACTIVE)
+                text_color = self.COLOR_TAB_TEXT_INACTIVE
             
-            # Draw tab border
-            if is_active:
-                self.draw.rectangle(
-                    [(x_start, 0), (x_start + tab_width - 1, self.TAB_HEIGHT)],
-                    outline=(255, 255, 255),
-                    width=1
-                )
-            
-            # Draw tab text (centered)
+            # Tab label
             tab_name = self._get_tab_name(i)
-            text_color = self.COLOR_TAB_TEXT_ACTIVE if is_active else self.COLOR_TAB_TEXT_INACTIVE
-            
-            # Calculate text position for centering
-            bbox = self.draw.textbbox((0, 0), tab_name, font=self.font_small)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            text_x = x_start + (tab_width - text_width) // 2
-            text_y = (self.TAB_HEIGHT - text_height) // 2 - 1
+            text_bbox = self.draw.textbbox((0, 0), tab_name, font=self.font_small)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_x = x1 + (tab_width - text_width) // 2
+            text_y = 2
             
             self.draw.text((text_x, text_y), tab_name, fill=text_color, font=self.font_small)
-
+    
     def _draw_content_area(self):
         """Clear the content area below the tab bar."""
-        self.draw.rectangle(
-            [(0, self.TAB_HEIGHT), (self.lcd.width, self.lcd.height)],
-            fill=self.COLOR_BG
-        )
-    
+        self.draw.rectangle((0, self.TAB_HEIGHT, self.lcd.width, self.lcd.height), self.COLOR_BG)
+
     def update_display(self, ip_address: str, frame_with_detections, env_data, 
                        detections=None, aruco_markers=None):
         """Update the LCD display with current data.
@@ -280,41 +278,18 @@ class LCDDisplay:
             
         except Exception as e:
             print(f"LCD update error: {e}")
-    
+
     def _draw_ip_tab(self, y_start: int, ip_address: str):
         """Tab 0: IP Address Display"""
         self._draw_content_area()
         
-        # Center the text vertically and horizontally in content area
-        content_height = self.lcd.height - y_start
+        y = y_start + 10
+        line_spacing = 25
         
-        # Use larger font for IP display
-        font_large = ImageFont.truetype(UserFont, 18)
-        
-        # Calculate text sizes
-        header_bbox = self.draw.textbbox((0, 0), "IP Address:", font=font_large)
-        header_width = header_bbox[2] - header_bbox[0]
-        header_height = header_bbox[3] - header_bbox[1]
-        
-        ip_bbox = self.draw.textbbox((0, 0), ip_address, font=font_large)
-        ip_width = ip_bbox[2] - ip_bbox[0]
-        ip_height = ip_bbox[3] - ip_bbox[1]
-        
-        # Calculate vertical centering
-        line_spacing = 10
-        total_height = header_height + line_spacing + ip_height
-        start_y = y_start + (content_height - total_height) // 2
-        
-        # Draw header centered horizontally
-        header_x = (self.lcd.width - header_width) // 2
-        self.draw.text((header_x, start_y), "IP Address:", 
-                      fill=(255, 255, 255), font=font_large)
-        
-        # Draw IP address centered horizontally (all white)
-        ip_x = (self.lcd.width - ip_width) // 2
-        ip_y = start_y + header_height + line_spacing
-        self.draw.text((ip_x, ip_y), ip_address, 
-                      fill=(255, 255, 255), font=font_large)
+        # Display IP address (left-aligned like TEMP tab)
+        self.draw.text((5, y), "IP Address:", fill=self.COLOR_TEXT, font=self.font_medium)
+        y += line_spacing
+        self.draw.text((5, y), ip_address, fill=self.COLOR_TEXT, font=self.font_medium)
 
     def _draw_camera_tab(self, y_start: int, frame_with_detections):
         """Tab 1: Live Camera Feed with Detection Overlay + Detection List"""
@@ -354,11 +329,13 @@ class LCDDisplay:
                     # Count detections by class
                     detection_counts = {}
                     for det in detections:
-                        detection_counts[det.label] = detection_counts.get(det.label, 0) + 1
+                        detection_counts[det.class_name] = detection_counts.get(det.class_name, 0) + 1
                     
-                    # Draw detected classes with colors
+                    # Draw detected classes with colors (convert BGR to RGB)
                     for label, count in detection_counts.items():
-                        color = config.DETECTION_COLOURS.get(label, config.DETECTION_COLOURS["default"])
+                        bgr_color = config.DETECTION_COLOURS.get(label, config.DETECTION_COLOURS["default"])
+                        # Convert BGR to RGB for PIL
+                        color = self._bgr_to_rgb(bgr_color)
                         text = f"{label}: {count}"
                         self.draw.text((text_x, text_y), text, 
                                      fill=color, font=self.font_small)
@@ -386,41 +363,29 @@ class LCDDisplay:
             self._draw_content_area()
             self.draw.text((5, y_start + 30), "No Frame Available", 
                          fill=self.COLOR_ERROR, font=self.font_medium)
-    
+
     def _draw_temp_tab(self, y_start: int, env_data):
         """Tab 2: Temperature Readings (Enviro+ BME280 + Pi CPU)"""
         y = y_start + 10
         line_spacing = 25
         
         if env_data:
-            # Enviro+ Temperature
-            temp_color = self.COLOR_VALUE
-            if env_data.temperature_c > 40:
-                temp_color = self.COLOR_WARNING
-            elif env_data.temperature_c > 50:
-                temp_color = self.COLOR_ERROR
-            
+            # Enviro+ Temperature - White text
             self.draw.text((5, y), f"Temperature: {env_data.temperature_c:.1f} °C", 
-                         fill=temp_color, font=self.font_medium)
+                         fill=self.COLOR_TEXT, font=self.font_medium)
             y += line_spacing
             
-            # Pi CPU Temperature
+            # Pi CPU Temperature - White text
             if env_data.pi_temperature_c is not None:
-                pi_temp_color = self.COLOR_VALUE
-                if env_data.pi_temperature_c > 70:
-                    pi_temp_color = self.COLOR_WARNING
-                elif env_data.pi_temperature_c > 80:
-                    pi_temp_color = self.COLOR_ERROR
-                
                 self.draw.text((5, y), f"RPi CPU Temp: {env_data.pi_temperature_c:.1f} °C", 
-                             fill=pi_temp_color, font=self.font_medium)
+                             fill=self.COLOR_TEXT, font=self.font_medium)
             else:
                 self.draw.text((5, y), "RPi CPU Temp: N/A", 
                              fill=self.COLOR_ERROR, font=self.font_medium)
         else:
             self.draw.text((5, y + 20), "No Temperature Data", 
                          fill=self.COLOR_ERROR, font=self.font_medium)
-    
+
     def close(self):
         """Properly close the LCD and turn off backlight."""
         if self.lcd:

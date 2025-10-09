@@ -34,6 +34,13 @@ from gcs_client import GCSClient
 from enviro_lcd import EnvironmentalSensors, LCDDisplay
 from drilling import DrillController
 
+# Import audit logging
+try:
+    from audit_logger import log_system, log_vision, log_drill, log_error
+    AUDIT_LOGGING_AVAILABLE = True
+except ImportError:
+    AUDIT_LOGGING_AVAILABLE = False
+
 
 class MainApp:
     """The main application class for the TAIP subsystem."""
@@ -61,6 +68,9 @@ class MainApp:
         """Initialise all hardware and software components."""
         print("Initialising TAIP Subsystem...")
         
+        if AUDIT_LOGGING_AVAILABLE:
+            log_system("System Initializing", "TAIP subsystem startup", "info")
+        
         # Determine input mode and initialise accordingly
         if config.INPUT_PATH:
             # File input mode
@@ -73,6 +83,9 @@ class MainApp:
             # In test mode, ArUco runs on RGB frames using RGB intrinsics
             K = config.CAMERA_MATRIX_RGB
             D = config.DISTORTION_COEFFS_RGB
+            
+            if AUDIT_LOGGING_AVAILABLE:
+                log_system("Test Mode", f"Running from file: {config.INPUT_PATH}", "info")
         else:
             # Live camera mode
             print("Live camera mode")
@@ -81,6 +94,9 @@ class MainApp:
             # In live mode, ArUco runs on LEFT mono using LEFT intrinsics
             K = config.CAMERA_MATRIX_LEFT
             D = config.DISTORTION_COEFFS_LEFT
+            
+            if AUDIT_LOGGING_AVAILABLE:
+                log_system("Live Mode", "Camera initialized", "success")
 
         # Start non-blocking ArUco worker
         self.aruco_worker = ArucoWorker(camera_matrix=K, dist_coeffs=D, marker_size_m=config.ARUCO_MARKER_SIZE_M, max_hz=30.0)
@@ -97,6 +113,9 @@ class MainApp:
         self.ip_address = self._get_ip_address()
         print(f"System IP: {self.ip_address}")
         print(f"GCS Server URL: {config.GCS_URL}")
+        
+        if AUDIT_LOGGING_AVAILABLE:
+            log_system("System Ready", f"IP: {self.ip_address}, GCS: {config.GCS_URL}", "success")
 
     def run_loop(self):
         """Main processing loop for both camera and file input."""

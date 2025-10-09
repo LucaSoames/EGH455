@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import TelemetryDisplay from './TelemetryDisplay';
 import VideoStream from './VideoStream';
 import AuditLogs from './AuditLogs';
+import AuditLogsDatabase from './AuditLogsDatabase';
 import LCDControl from './LCDControl';
 
 function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'audit' | 'audit-db'>('overview');
 
   return (
     <div className="container">
@@ -34,6 +35,20 @@ function Dashboard() {
             📊 Overview
           </button>
           <button
+            onClick={() => setActiveTab('audit-db')}
+            style={{
+              padding: '1rem 2rem',
+              border: 'none',
+              backgroundColor: 'transparent',
+              borderBottom: activeTab === 'audit-db' ? '2px solid #3498db' : '2px solid transparent',
+              color: activeTab === 'audit-db' ? '#3498db' : '#666',
+              fontWeight: activeTab === 'audit-db' ? 'bold' : 'normal',
+              cursor: 'pointer'
+            }}
+          >
+            📋 Audit Logs (Database)
+          </button>
+          <button
             onClick={() => setActiveTab('audit')}
             style={{
               padding: '1rem 2rem',
@@ -45,7 +60,7 @@ function Dashboard() {
               cursor: 'pointer'
             }}
           >
-            📋 Audit Logs
+            📝 Live Events
           </button>
         </div>
       </div>
@@ -73,9 +88,15 @@ function Dashboard() {
         </>
       )}
 
+      {activeTab === 'audit-db' && (
+        <div>
+          <AuditLogsDatabase />
+        </div>
+      )}
+
       {activeTab === 'audit' && (
         <div>
-          <h2>System Audit Logs</h2>
+          <h2>Live System Events</h2>
           <AuditLogs />
         </div>
       )}

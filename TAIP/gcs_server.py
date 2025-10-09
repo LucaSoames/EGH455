@@ -44,6 +44,15 @@ except ImportError:
     # Running on laptop without config
     PROJECT_ROOT = Path(__file__).parent.parent
 
+# Import audit logger
+try:
+    from audit_logger import (get_audit_logger, log_system, log_telemetry, 
+                              log_network, log_sensor, log_vision)
+    AUDIT_LOGGING_AVAILABLE = True
+except ImportError:
+    AUDIT_LOGGING_AVAILABLE = False
+    print("[WARNING] Audit logging not available")
+
 class GCSServer:
     """Ground Control Station server that receives data from the Pi."""
     
@@ -92,8 +101,16 @@ class GCSServer:
         self._setup_routes()
         self._setup_socket_handlers()
         
+        # Initialize audit logger
+        if AUDIT_LOGGING_AVAILABLE:
+            self.audit_logger = get_audit_logger()
+            log_system("GCS Server Started", f"Initialized on {host}:{port}", "success")
+        else:
+            self.audit_logger = None
+        
         print(f"=" * 60)
         print(f"GCS Server initialized on {host}:{port}")
+        print(f"Audit Logging: {'Enabled' if AUDIT_LOGGING_AVAILABLE else 'Disabled'}")
         print(f"=" * 60)
 
     def _print_periodic_status(self):
@@ -132,6 +149,89 @@ class GCSServer:
                         self._latest_telemetry = data
                         self._telemetry_count += 1
                     
+                    # Log telemetry events
+                    if AUDIT_LOGGING_AVAILABLE:
+                        # Log pressure reading
+                        pressure = data.get('gauge_pressure_bar')
+                        if pressure is not None:
+                            status = "success" if pressure > 3.0 else ("warning" if pressure > 1.0 else "error")
+                            log_telemetry(
+                                "Pressure Reading",
+                                f"Gauge pressure: {pressure:.2f} bar",
+                                status=status,
+                                pressure=pressure
+                            )
+                        
+                        # Log environmental data
+                        env_data = data.get('environmental_data')
+                        if env_data:
+                            temp = env_data.get('temperature_c')
+                            humidity = env_data.get('humidity_rh')
+                            press = env_data.get('pressure_hpa')
+                            light = env_data.get('light_lux')
+                            
+                            # Determine status based on temperature
+                            env_status = "info"
+                            if temp is not None:
+                                if temp > 45:
+                                    env_status = "error"
+                                elif temp > 35 or temp < 5:
+                                    env_status = "warning"
+                                else:
+                                    env_status = "success"
+                            
+                            details_parts = []
+                            if temp is not None:
+                                details_parts.append(f"Temp: {temp:.1f}°C")
+                            if humidity is not None:
+                                details_parts.append(f"Humidity: {humidity:.1f}%")
+                            if press is not None:
+                                details_parts.append(f"Pressure: {press:.1f} hPa")
+                            if light is not None:
+                                details_parts.append(f"Light: {light:.1f} lux")
+                            
+                            if details_parts:
+                                log_sensor(
+                                    "Environmental Reading",
+                                    ", ".join(details_parts),
+                                    status=env_status,
+                                    temperature=temp,
+                                    humidity=humidity,
+                                    pressure_hpa=press,
+                                    light=light
+                                )
+                        
+                        # Log YOLO detections
+                        detections = data.get('yolo_detections', [])
+                        if detections:
+                            detection_summary = f"{len(detections)} objects detected"
+                            if detections:
+                                classes = [d.get('class_name', 'unknown') for d in detections]
+                                detection_summary += f": {', '.join(classes)}"
+                            log_vision(
+                                "Object Detection",
+                                detection_summary,
+                                status="info",
+                                count=len(detections),
+                                classes=classes if detections else []
+                            )
+                        
+                        # Log ArUco markers
+                        aruco_markers = data.get('aruco_markers', [])
+                        if aruco_markers:
+                            marker_ids = [m.get('marker_id') for m in aruco_markers]
+                            distances = [m.get('distance_m') for m in aruco_markers]
+                            details = f"{len(aruco_markers)} marker(s): "
+                            details += ", ".join([f"ID {mid} at {dist:.2f}m" 
+                                                for mid, dist in zip(marker_ids, distances)])
+                            log_vision(
+                                "ArUco Detection",
+                                details,
+                                status="success",
+                                marker_count=len(aruco_markers),
+                                marker_ids=marker_ids
+                            )
+                    
                     # Broadcast the FULL telemetry data to WebSocket clients
                     self.socketio.emit('telemetry_update', data)
                     
@@ -143,6 +243,10 @@ class GCSServer:
                     return {"error": "No data received"}, 400
             except Exception as e:
                 print(f"[ERROR] Telemetry error: {e}")
+                import traceback
+                traceback.print_exc()
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_network("Telemetry Error", str(e), "error")
                 return {"error": str(e)}, 500
         
         @self.app.route('/frame', methods=['POST'])
@@ -154,6 +258,15 @@ class GCSServer:
                     with self._data_lock:
                         self._latest_frame = frame_data
                         self._frame_count += 1
+                    
+                    # Log frame reception periodically (every 100 frames to avoid spam)
+                    if AUDIT_LOGGING_AVAILABLE and self._frame_count % 100 == 0:
+                        log_network(
+                            "Video Frames Received",
+                            f"Total frames: {self._frame_count}",
+                            status="info",
+                            frame_count=self._frame_count
+                        )
                     
                     # Convert to base64 and broadcast to WebSocket clients
                     frame_b64 = base64.b64encode(frame_data).decode('utf-8')
@@ -167,6 +280,8 @@ class GCSServer:
                     return {"error": "No frame data received"}, 400
             except Exception as e:
                 print(f"[ERROR] Frame error: {e}")
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_network("Frame Error", str(e), "error")
                 return {"error": str(e)}, 500
 
         @self.app.route('/api/telemetry')
@@ -197,11 +312,24 @@ class GCSServer:
                     
                     print(f"[LCD] Tab changed to: {tab_index}")
                     
+                    # Log LCD change
+                    if AUDIT_LOGGING_AVAILABLE:
+                        tab_names = ['IP', 'Camera', 'Temperature']
+                        log_system(
+                            "LCD Tab Changed",
+                            f"Display switched to: {tab_names[tab_index]} (Tab {tab_index})",
+                            "info",
+                            tab_index=tab_index,
+                            tab_name=tab_names[tab_index]
+                        )
+                    
                     return {"status": "ok", "tab_index": tab_index}, 200
                 else:
                     return {"error": "Invalid tab_index (must be 0-2)"}, 400
             except Exception as e:
                 print(f"[ERROR] LCD tab error: {e}")
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_network("LCD Tab Error", str(e), "error")
                 return {"error": str(e)}, 500
 
         # Add GET endpoint to retrieve current LCD tab state
@@ -210,6 +338,90 @@ class GCSServer:
             """Get current LCD tab index."""
             with self._data_lock:
                 return {"tab_index": self._lcd_tab_index}, 200
+
+        # Audit log endpoints
+        @self.app.route('/api/audit/logs', methods=['GET'])
+        def get_audit_logs():
+            """Get audit logs with optional filtering and pagination."""
+            if not AUDIT_LOGGING_AVAILABLE:
+                return {"error": "Audit logging not available"}, 503
+            
+            try:
+                # Get query parameters
+                limit = int(request.args.get('limit', 100))
+                offset = int(request.args.get('offset', 0))
+                event_type = request.args.get('event_type')
+                status = request.args.get('status')
+                search = request.args.get('search')
+                start_date = request.args.get('start_date')
+                end_date = request.args.get('end_date')
+                
+                # Get logs and total count
+                logs = self.audit_logger.get_logs(
+                    limit=limit,
+                    offset=offset,
+                    event_type=event_type,
+                    status=status,
+                    search=search,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                total_count = self.audit_logger.get_log_count(
+                    event_type=event_type,
+                    status=status,
+                    search=search,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                return {
+                    "logs": logs,
+                    "total_count": total_count,
+                    "limit": limit,
+                    "offset": offset
+                }, 200
+                
+            except Exception as e:
+                print(f"[ERROR] Audit logs error: {e}")
+                return {"error": str(e)}, 500
+
+        @self.app.route('/api/audit/stats', methods=['GET'])
+        def get_audit_stats():
+            """Get audit log statistics."""
+            if not AUDIT_LOGGING_AVAILABLE:
+                return {"error": "Audit logging not available"}, 503
+            
+            try:
+                stats = self.audit_logger.get_stats()
+                return stats, 200
+            except Exception as e:
+                print(f"[ERROR] Audit stats error: {e}")
+                return {"error": str(e)}, 500
+
+        @self.app.route('/api/audit/clear', methods=['POST'])
+        def clear_old_audit_logs():
+            """Clear old audit logs (admin function)."""
+            if not AUDIT_LOGGING_AVAILABLE:
+                return {"error": "Audit logging not available"}, 503
+            
+            try:
+                data = request.get_json() or {}
+                days = int(data.get('days', 30))
+                deleted_count = self.audit_logger.clear_old_logs(days)
+                
+                log_system("Audit Logs Cleared", 
+                          f"Deleted {deleted_count} logs older than {days} days",
+                          "warning")
+                
+                return {
+                    "status": "ok",
+                    "deleted_count": deleted_count,
+                    "days": days
+                }, 200
+            except Exception as e:
+                print(f"[ERROR] Clear audit logs error: {e}")
+                return {"error": str(e)}, 500
 
         @self.app.route('/')
         def serve_frontend():
@@ -246,6 +458,10 @@ class GCSServer:
         @self.socketio.on('connect')
         def handle_connect():
             print(f"[SOCKET] Client connected: {request.sid}")
+            
+            if AUDIT_LOGGING_AVAILABLE:
+                log_network("Client Connected", f"WebSocket client: {request.sid}", "info")
+            
             emit('connected', {'status': 'Connected to GCS server'})
             
             # Send latest data if available
@@ -259,6 +475,9 @@ class GCSServer:
         @self.socketio.on('disconnect')
         def handle_disconnect():
             print(f"[SOCKET] Client disconnected: {request.sid}")
+            
+            if AUDIT_LOGGING_AVAILABLE:
+                log_network("Client Disconnected", f"WebSocket client: {request.sid}", "info")
         
         @self.socketio.on('request_telemetry')
         def handle_request_telemetry(data=None):

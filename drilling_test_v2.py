@@ -24,8 +24,8 @@ PWM_FREQUENCY = 50   # Hz
 
 # Duty cycles for continuous rotation (tune for your servo if needed)
 STOP_DUTY = 7.5      # ~1.5 ms pulse — stop
-CW_DUTY   = 12.5     # ~2.5 ms pulse — full clockwise
-CCW_DUTY  = 2.5      # ~0.5 ms pulse — full anticlockwise
+CW_DUTY   = 13.0     # ~2.5 ms pulse — full clockwise
+CCW_DUTY  = 2.0      # ~0.5 ms pulse — full anticlockwise
 
 # ===== SETUP =====
 GPIO.setmode(GPIO.BCM)
@@ -39,16 +39,16 @@ time.sleep(0.5)  # settle
 
 try:
     print("Clockwise for 10 seconds…")
-    pwm.ChangeDutyCycle(CCW_DUTY)
-    time.sleep(10)
+    pwm.ChangeDutyCycle(CW_DUTY)
+    time.sleep(30)
 
     print("Stop for 1 second…")
     pwm.ChangeDutyCycle(STOP_DUTY)
     time.sleep(1)
 
     print("Anticlockwise for 10 seconds…")
-    pwm.ChangeDutyCycle(CW_DUTY)
-    time.sleep(10)
+    pwm.ChangeDutyCycle(CCW_DUTY)
+    time.sleep(30)
 
     print("Stop.")
     pwm.ChangeDutyCycle(STOP_DUTY)

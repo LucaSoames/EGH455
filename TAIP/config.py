@@ -61,8 +61,8 @@ DETECTION_COLOURS = {
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
-# GCS_LAPTOP_IP = "192.168.86.22"
-GCS_LAPTOP_IP = "127.0.0.1"
+GCS_LAPTOP_IP = "10.88.24.123"
+# GCS_LAPTOP_IP = "127.0.0.1"
 GCS_URL = f"http://{GCS_LAPTOP_IP}:3000"
 POST_FRAME_FPS = 10
 POST_TELEM_HZ = 5
@@ -90,7 +90,8 @@ DRILL_DURATION_SEC = 10.0       # Duration to run drill once activated
 DRILL_TRIGGER_COUNT = 3         # Hysteresis parameter (consecutive readings required to trigger)
 PWM_FREQUENCY = 50              # Hz
 STOP_DUTY = 7.5                 # ~1.5ms pulse - stop
-ACTIVE_DUTY = 2.5               # ~0.5ms pulse - drilling (CCW)
+CCW_DUTY = 2.0                  # ~0.5ms pulse - drilling (CCW)
+CW_DUTY = 13.0                  # ~2.5 ms pulse — full clockwise
 
 # --- ArUco Marker Configuration ---
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)

@@ -109,7 +109,7 @@ class DrillController:
             if self.pwm:
                 # Activate drill by setting a continuous PWM signal
                 print(f"DRILL ACTIVATED - Starting {config.DRILL_DURATION_SEC} second drilling sequence")
-                self._set_continuous_pwm(config.ACTIVE_DUTY)
+                self._set_continuous_pwm(config.CW_DUTY)
                 
                 # Set up a timer to stop drilling after fixed duration
                 self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._complete_drilling)
@@ -123,6 +123,12 @@ class DrillController:
         """Complete the drilling sequence and reset to stopped position."""
         try:
             if self.pwm:
+                self._set_pwm_duty(config.STOP_DUTY)
+                # Activate drill by setting a continuous PWM signal
+                print(f"DRILL ACTIVATED - Starting {config.DRILL_DURATION_SEC} second REVERSE drilling sequence")
+                self._set_continuous_pwm(config.CCW_DUTY)
+                time.sleep(config.DRILL_DURATION_SEC)
+                
                 # Stop drill by moving to the stop position and then disabling the signal
                 print("DRILL DEACTIVATED - Drilling sequence completed")
                 self._set_pwm_duty(config.STOP_DUTY)

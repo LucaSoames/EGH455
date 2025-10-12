@@ -491,18 +491,20 @@ def draw_gauge_debug(frame: np.ndarray, detections: List[YoloDetection]) -> np.n
     # Draw needle line
     cv2.line(debug_frame, (cx, cy), (tx, ty), (0, 255, 255), 3)
     
+    pressure_limit_line_len = 50
+
     # Draw min angle line (0 bar)
     min_rad = math.radians(config.GAUGE_MIN_ANGLE_DEG)
-    min_x = int(cx + 300 * math.cos(min_rad))
-    min_y = int(cy - 300 * math.sin(min_rad))  # Note: Y is flipped
+    min_x = int(cx + pressure_limit_line_len * math.cos(min_rad))
+    min_y = int(cy - pressure_limit_line_len * math.sin(min_rad))  # Note: Y is flipped
     cv2.line(debug_frame, (cx, cy), (min_x, min_y), (0, 255, 0), 2)
     cv2.putText(debug_frame, "0 bar", (min_x - 60, min_y + 40), 
                 cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, (0, 255, 0), 2)
     
     # Draw max angle line (10 bar)
     max_rad = math.radians(config.GAUGE_MAX_ANGLE_DEG)
-    max_x = int(cx + 300 * math.cos(max_rad))
-    max_y = int(cy - 300 * math.sin(max_rad))  # Note: Y is flipped
+    max_x = int(cx + pressure_limit_line_len * math.cos(max_rad))
+    max_y = int(cy - pressure_limit_line_len * math.sin(max_rad))  # Note: Y is flipped
     cv2.line(debug_frame, (cx, cy), (max_x, max_y), (0, 0, 255), 2)
     cv2.putText(debug_frame, "10 bar", (max_x, max_y + 40), 
                 cv2.FONT_HERSHEY_SIMPLEX, config.DETECTION_TEXT_SIZE, (0, 0, 255), 2)

@@ -104,27 +104,59 @@ class DrillController:
             self._start_drilling_sequence()
     
     def _start_drilling_sequence(self):
-        """Start the drilling sequence that runs for a fixed duration."""
+        """Start the drilling sequence: CW -> Stop -> CCW -> Stop."""
         try:
             if self.pwm:
-                # Activate drill by setting a continuous PWM signal
-                print(f"DRILL ACTIVATED - Starting {config.DRILL_DURATION_SEC} second drilling sequence")
-                self._set_continuous_pwm(config.ACTIVE_DUTY)
+                # Phase 1: Drill clockwise
+                print(f"DRILL ACTIVATED - Phase 1: Drilling CW for {config.DRILL_DURATION_SEC} seconds")
+                self._set_continuous_pwm(config.CW_DUTY)
                 
-                # Set up a timer to stop drilling after fixed duration
-                self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._complete_drilling)
+                # Set up timer to transition to stop phase after CW duration
+                self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._stop_between_phases)
                 self.drill_timer.daemon = True
                 self.drill_timer.start()
         except Exception as e:
             print(f"Error starting drill sequence: {e}")
             self._complete_drilling()  # Try to restore to safe state
     
+    def _stop_between_phases(self):
+        """Stop briefly between CW and CCW phases."""
+        try:
+            if self.pwm:
+                # Stop the drill
+                print("DRILL - Phase 2: Stopping briefly between CW and CCW")
+                self._set_pwm_duty(config.STOP_DUTY, duration=1.0)  # Brief stop
+                
+                # Set up timer to start CCW phase
+                self.drill_timer = threading.Timer(0.5, self._start_ccw_phase)
+                self.drill_timer.daemon = True
+                self.drill_timer.start()
+        except Exception as e:
+            print(f"Error in stop phase: {e}")
+            self._complete_drilling()
+    
+    def _start_ccw_phase(self):
+        """Start the counter-clockwise drilling phase."""
+        try:
+            if self.pwm:
+                # Phase 3: Drill counter-clockwise
+                print(f"DRILL - Phase 3: Drilling CCW for {config.DRILL_DURATION_SEC} seconds")
+                self._set_continuous_pwm(config.CCW_DUTY)
+                
+                # Set up timer to complete drilling after CCW duration
+                self.drill_timer = threading.Timer(config.DRILL_DURATION_SEC, self._complete_drilling)
+                self.drill_timer.daemon = True
+                self.drill_timer.start()
+        except Exception as e:
+            print(f"Error starting CCW phase: {e}")
+            self._complete_drilling()
+    
     def _complete_drilling(self):
         """Complete the drilling sequence and reset to stopped position."""
         try:
             if self.pwm:
-                # Stop drill by moving to the stop position and then disabling the signal
-                print("DRILL DEACTIVATED - Drilling sequence completed")
+                # Phase 4: Stop and complete
+                print("DRILL DEACTIVATED - Phase 4: Drilling sequence completed, returning to stop position")
                 self._set_pwm_duty(config.STOP_DUTY)
                 
                 # Mark drilling as complete for this cycle

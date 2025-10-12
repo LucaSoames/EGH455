@@ -73,7 +73,7 @@ class EnvironmentalData:
 @dataclass
 class PayloadData:
     """
-    The main data packet to be serialized into JSON and sent to the GCS.
+    The main data packet to be serialised into JSON and sent to the GCS.
     This structure aggregates all sensor and vision processing outputs.
     """
     timestamp: str

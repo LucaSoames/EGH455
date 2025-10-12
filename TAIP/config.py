@@ -14,8 +14,9 @@ import numpy as np
 from pathlib import Path
 
 # --- Project Structure ---
-PROJECT_ROOT = Path("/home/pi/EGH455")
-TAIP_ROOT = PROJECT_ROOT / "TAIP"
+# Use relative paths that work on both Windows and Linux
+TAIP_ROOT = Path(__file__).parent
+PROJECT_ROOT = TAIP_ROOT.parent
 
 # --- Mode Configuration ---
 # Set to None to use the live OAK-D camera feed.
@@ -61,7 +62,7 @@ DETECTION_COLOURS = {
 
 # --- GCS (Ground Control Station) Communication ---
 # The IP address of the laptop running the ground_station_server.py
-GCS_LAPTOP_IP = "10.88.24.123"
+GCS_LAPTOP_IP = "192.168.86.24"
 # GCS_LAPTOP_IP = "127.0.0.1"
 GCS_URL = f"http://{GCS_LAPTOP_IP}:3000"
 POST_FRAME_FPS = 10

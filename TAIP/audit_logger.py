@@ -2,13 +2,18 @@
 """
 Audit Logger for the EGH455 TAIP Subsystem
 
-This module provides database-backed audit logging functionality for the TAIP system.
-It stores all system events with timestamps in a SQLite database and provides
-search, filtering, and retrieval capabilities.
+This module provides audit logging functionality for the TAIP system.
+It supports two modes:
+  - SERVER MODE: Uses local SQLite database (for GCS server)
+  - CLIENT MODE: Sends logs to remote GCS server via HTTP POST (for Pi)
+
+The mode is automatically detected based on whether this is running on the
+GCS server (has local DB) or the Pi client (sends to remote).
 """
 
 import sqlite3
 import json
+import requests
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -20,8 +25,15 @@ import config
 # Database path
 DB_PATH = config.TAIP_ROOT / "audit_logs.db"
 
+# API endpoint for remote logging (only used in CLIENT mode)
+REMOTE_LOG_URL = f"{config.GCS_URL}/api/audit/log"
+
+# Determine if we're running in CLIENT mode (Pi) or SERVER mode (GCS laptop)
+# This is a simple heuristic - in SERVER mode we can write to DB, in CLIENT we cannot
+IS_CLIENT_MODE = not config.GCS_URL.startswith("http://127.0.0.1") and not config.GCS_URL.startswith("http://localhost")
+
 class AuditLogger:
-    """Thread-safe audit logging system with SQLite backend."""
+    """Thread-safe audit logging system supporting both local DB and remote logging."""
     
     # Event types
     TELEMETRY = "telemetry"
@@ -39,16 +51,24 @@ class AuditLogger:
     ERROR_STATUS = "error"
     SUCCESS = "success"
     
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, force_server_mode: bool = False):
         """
         Initialize the audit logger.
         
         Args:
-            db_path: Path to the SQLite database file. If None, uses default.
+            db_path: Path to the SQLite database file (SERVER mode only)
+            force_server_mode: Force SERVER mode even if heuristic suggests CLIENT
         """
+        self.is_client_mode = IS_CLIENT_MODE and not force_server_mode
         self.db_path = db_path or DB_PATH
         self._lock = threading.Lock()
-        self._init_database()
+        self.session = requests.Session() if self.is_client_mode else None
+        
+        if not self.is_client_mode:
+            # SERVER mode: initialize local database
+            self._init_database()
+        else:
+            print(f"Audit logger in CLIENT mode - sending logs to {REMOTE_LOG_URL}")
     
     @contextmanager
     def _get_connection(self):
@@ -106,6 +126,9 @@ class AuditLogger:
         """
         Log an audit event.
         
+        In CLIENT mode: sends log to remote GCS server via HTTP POST
+        In SERVER mode: writes directly to local database
+        
         Args:
             event_type: Type of event (telemetry, system, drill, etc.)
             action: Short description of the action
@@ -114,21 +137,46 @@ class AuditLogger:
             metadata: Additional metadata as a dictionary
             
         Returns:
-            The ID of the inserted log entry
+            The ID of the inserted log entry (SERVER mode) or 0 (CLIENT mode)
         """
         timestamp = datetime.now().isoformat()
-        metadata_json = json.dumps(metadata) if metadata else None
         
-        with self._lock:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO audit_logs 
-                    (timestamp, event_type, action, details, status, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (timestamp, event_type, action, details, status, metadata_json))
-                conn.commit()
-                return cursor.lastrowid
+        if self.is_client_mode:
+            # CLIENT mode: send to remote GCS server
+            log_data = {
+                'timestamp': timestamp,
+                'event_type': event_type,
+                'action': action,
+                'details': details,
+                'status': status,
+                'metadata': metadata
+            }
+            
+            try:
+                response = self.session.post(
+                    REMOTE_LOG_URL,
+                    json=log_data,
+                    timeout=1.0  # Quick timeout to avoid blocking
+                )
+                return response.json().get('id', 0) if response.ok else 0
+            except Exception as e:
+                # Silently fail - don't let logging errors crash the app
+                print(f"Failed to send audit log: {e}")
+                return 0
+        else:
+            # SERVER mode: write to local database
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO audit_logs 
+                        (timestamp, event_type, action, details, status, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (timestamp, event_type, action, details, status, metadata_json))
+                    conn.commit()
+                    return cursor.lastrowid
     
     def get_logs(self,
                  limit: int = 100,
@@ -140,6 +188,8 @@ class AuditLogger:
                  end_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Retrieve audit logs with filtering and pagination.
+        
+        Only available in SERVER mode. In CLIENT mode, returns empty list.
         
         Args:
             limit: Maximum number of logs to return
@@ -153,6 +203,8 @@ class AuditLogger:
         Returns:
             List of log dictionaries
         """
+        if self.is_client_mode:
+            return []
         query = "SELECT * FROM audit_logs WHERE 1=1"
         params = []
         
@@ -207,12 +259,16 @@ class AuditLogger:
         """
         Get the total count of logs matching the filters.
         
+        Only available in SERVER mode. In CLIENT mode, returns 0.
+        
         Args:
             Same as get_logs()
             
         Returns:
             Total count of matching logs
         """
+        if self.is_client_mode:
+            return 0
         query = "SELECT COUNT(*) as count FROM audit_logs WHERE 1=1"
         params = []
         
@@ -247,9 +303,19 @@ class AuditLogger:
         """
         Get statistics about audit logs.
         
+        Only available in SERVER mode. In CLIENT mode, returns empty stats.
+        
         Returns:
             Dictionary with various statistics
         """
+        if self.is_client_mode:
+            return {
+                'total_events': 0,
+                'events_by_type': {},
+                'events_by_status': {},
+                'events_last_hour': 0,
+                'events_last_day': 0
+            }
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -301,12 +367,16 @@ class AuditLogger:
         """
         Delete logs older than the specified number of days.
         
+        Only available in SERVER mode. In CLIENT mode, returns 0.
+        
         Args:
             days: Number of days to keep logs
             
         Returns:
             Number of logs deleted
         """
+        if self.is_client_mode:
+            return 0
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()

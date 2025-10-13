@@ -221,9 +221,15 @@ class MainApp:
             # Reset drill state if needed (when pressure is back above threshold + margin)
             if (self.drill_controller.drilling_complete and 
                 gauge_reading is not None and 
-                gauge_reading >= config.DRILL_PRESSURE_THRESHOLD + 2.0):
+                gauge_reading >= config.DRILL_PRESSURE_THRESHOLD + 0.5):
                 self.drill_controller.reset_drill_state()
                 print(f"Drill reset: pressure now {gauge_reading:.2f} bar (above threshold)")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_drill("Drill System Reset", 
+                             f"Pressure restored to {gauge_reading:.2f} bar, drill ready for next cycle",
+                             "success",
+                             pressure=gauge_reading)
                 
             time.sleep(0.01)  # Small sleep to reduce CPU hogging
 

@@ -87,7 +87,7 @@ SHOW_GAUGE_OVERLAY = True  # Overlay gauge calibration on output image
 # --- Drilling Subsystem Configuration ---
 DRILL_GPIO_PIN = 13
 DRILL_PRESSURE_THRESHOLD = 2.0  # Activate drill below this pressure
-DRILL_DURATION_SEC = 45.0       # Duration to run drill once activated
+DRILL_DURATION_SEC = 5.0       # Duration to run drill once activated (~45 seconds)
 DRILL_TRIGGER_COUNT = 3         # Hysteresis parameter (consecutive readings required to trigger)
 PWM_FREQUENCY = 50              # Hz
 STOP_DUTY = 7.5                 # ~1.5ms pulse - stop
@@ -150,21 +150,3 @@ RO_NH3 = 347942.92      # Ammonia (NH3)
 A_RED, B_RED = 300.0,  -300.0   # CO estimation
 A_OX,  B_OX  = 0.25,   -0.25    # NO2 estimation
 A_NH3, B_NH3 = -3.0,     3.0    # NH3 estimation
-
-def validate_config():
-    """Basic configuration validation for test scripts."""
-    errors = []
-    if not BLOB_PATH.exists():
-        errors.append(f"Model blob missing: {BLOB_PATH}")
-    if not CONFIG_PATH.exists():
-        errors.append(f"Model config JSON missing: {CONFIG_PATH}")
-    if GAUGE_MIN_PRESSURE_BAR >= GAUGE_MAX_PRESSURE_BAR:
-        errors.append("Gauge pressure range invalid")
-    if DRILL_PRESSURE_THRESHOLD < 0 or DRILL_PRESSURE_THRESHOLD > GAUGE_MAX_PRESSURE_BAR:
-        errors.append("Drill pressure threshold out of range")
-    # Basic intrinsics sanity
-    for name, K in [("RGB", CAMERA_MATRIX_RGB), ("LEFT", CAMERA_MATRIX_LEFT)]:
-        if K.shape != (3,3):
-            errors.append(f"Camera matrix shape invalid for {name}")
-
-    return True

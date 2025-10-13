@@ -26,6 +26,14 @@ except (ImportError, RuntimeError) as e:
     print(f"WARNING: RPi.GPIO error: {e}. Running without GPIO support.")
     IS_GPIO_AVAILABLE = False
 
+# Import audit logging
+try:
+    from audit_logger import log_drill, log_system
+    AUDIT_LOGGING_AVAILABLE = True
+except ImportError:
+    AUDIT_LOGGING_AVAILABLE = False
+    print("⚠ GPIO library not available. Drill control will run in simulation mode.")
+
 class DrillController:
     """Handles drill activation via GPIO using PWM for servo control."""
     
@@ -56,6 +64,11 @@ class DrillController:
                 self.pwm.ChangeDutyCycle(0) # Stop sending signal to prevent jitter
                 
                 print(f"✓ GPIO pin {config.DRILL_GPIO_PIN} initialised with PWM for drilling")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_system("Drill System Initialized", 
+                              f"GPIO pin {config.DRILL_GPIO_PIN} ready for drilling control",
+                              "success")
             except RuntimeError as e:
                 print(f"GPIO unavailable ({e}). Continuing without drill control.")
                 self.gpio_available = False
@@ -101,6 +114,15 @@ class DrillController:
         if (self.stable_threshold_count >= config.DRILL_TRIGGER_COUNT and 
                 self.gpio_available and not self.drill_active):
             self.drill_active = True
+            
+            if AUDIT_LOGGING_AVAILABLE:
+                log_drill("Drill Activation Triggered",
+                         f"Pressure {gauge_reading:.2f} bar below threshold {config.DRILL_PRESSURE_THRESHOLD} bar for {config.DRILL_TRIGGER_COUNT} consecutive readings",
+                         "warning",
+                         pressure=gauge_reading,
+                         threshold=config.DRILL_PRESSURE_THRESHOLD,
+                         trigger_count=config.DRILL_TRIGGER_COUNT)
+            
             self._start_drilling_sequence()
     
     def _start_drilling_sequence(self):
@@ -109,6 +131,15 @@ class DrillController:
             if self.pwm:
                 # Phase 1: Drill clockwise
                 print(f"DRILL ACTIVATED - Phase 1: Drilling CW for {config.DRILL_DURATION_SEC} seconds")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_drill("Drill Phase 1: CW Started",
+                             f"Drilling clockwise for {config.DRILL_DURATION_SEC}s",
+                             "error",
+                             phase=1,
+                             direction="CW",
+                             duration=config.DRILL_DURATION_SEC)
+                
                 self._set_continuous_pwm(config.CW_DUTY)
                 
                 # Set up timer to transition to stop phase after CW duration
@@ -125,6 +156,14 @@ class DrillController:
             if self.pwm:
                 # Stop the drill
                 print("DRILL - Phase 2: Stopping briefly between CW and CCW")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_drill("Drill Phase 2: Stop Between Phases",
+                             "Brief stop between CW and CCW rotation",
+                             "warning",
+                             phase=2,
+                             direction="STOP")
+                
                 self._set_pwm_duty(config.STOP_DUTY, duration=1.0)  # Brief stop
                 
                 # Set up timer to start CCW phase
@@ -141,6 +180,15 @@ class DrillController:
             if self.pwm:
                 # Phase 3: Drill counter-clockwise
                 print(f"DRILL - Phase 3: Drilling CCW for {config.DRILL_DURATION_SEC} seconds")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_drill("Drill Phase 3: CCW Started",
+                             f"Drilling counter-clockwise for {config.DRILL_DURATION_SEC}s",
+                             "error",
+                             phase=3,
+                             direction="CCW",
+                             duration=config.DRILL_DURATION_SEC)
+                
                 self._set_continuous_pwm(config.CCW_DUTY)
                 
                 # Set up timer to complete drilling after CCW duration
@@ -157,6 +205,14 @@ class DrillController:
             if self.pwm:
                 # Phase 4: Stop and complete
                 print("DRILL DEACTIVATED - Phase 4: Drilling sequence completed, returning to stop position")
+                
+                if AUDIT_LOGGING_AVAILABLE:
+                    log_drill("Drill Phase 4: Sequence Complete",
+                             "Drilling sequence completed successfully, returning to stop position",
+                             "success",
+                             phase=4,
+                             direction="STOP")
+                
                 self._set_pwm_duty(config.STOP_DUTY)
                 
                 # Mark drilling as complete for this cycle
@@ -170,6 +226,11 @@ class DrillController:
         self.drilling_complete = False
         self.stable_threshold_count = 0
         self.reading_buffer.clear()
+        
+        if AUDIT_LOGGING_AVAILABLE:
+            log_drill("Drill State Reset",
+                     "Drill ready for new activation cycle",
+                     "info")
     
     def close(self):
         """Clean up GPIO resources."""

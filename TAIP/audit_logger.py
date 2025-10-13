@@ -156,21 +156,14 @@ class AuditLogger:
                 response = self.session.post(
                     REMOTE_LOG_URL,
                     json=log_data,
-                    timeout=(1.0, 5.0)  # (connect timeout, read timeout)
+                    timeout=(0.5, 2.0)  # (connect timeout, read timeout) - keep it fast
                 )
                 return response.json().get('id', 0) if response.ok else 0
             except requests.exceptions.Timeout:
-                # Timeout is acceptable - log was likely received but response was slow
-                # Don't print error to avoid spam
+                # Timeout is acceptable - just return silently
                 return 0
-            except Exception as e:
-                # Other errors (connection refused, network error, etc.)
-                # Only print occasionally to avoid spam
-                if not hasattr(self, '_error_count'):
-                    self._error_count = 0
-                self._error_count += 1
-                if self._error_count == 1 or self._error_count % 100 == 0:
-                    print(f"Failed to send audit log: {e} (error #{self._error_count})")
+            except Exception:
+                # All other errors - fail silently to avoid spam
                 return 0
         else:
             # SERVER mode: write to local database

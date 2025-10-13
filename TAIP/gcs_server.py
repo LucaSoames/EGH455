@@ -446,23 +446,16 @@ class GCSServer:
                 if not event_type or not action:
                     return {"error": "Missing required fields: event_type, action"}, 400
                 
-                # Write to local database DIRECTLY without going through audit logger
-                # to avoid any potential circular logging
-                timestamp_iso = data.get('timestamp', datetime.now().isoformat())
-                metadata_json = json.dumps(metadata) if metadata else None
+                # Write to local database using the logger's method
+                log_id = self.audit_logger.log(
+                    event_type=event_type,
+                    action=action,
+                    details=details,
+                    status=status,
+                    metadata=metadata
+                )
                 
-                with self.audit_logger._lock:
-                    with self.audit_logger._get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            INSERT INTO audit_logs 
-                            (timestamp, event_type, action, details, status, metadata)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (timestamp_iso, event_type, action, details, status, metadata_json))
-                        conn.commit()
-                        log_id = cursor.lastrowid
-                
-                # Quick response - don't broadcast or do extra processing
+                # Quick response
                 return {"status": "ok", "id": log_id}, 200
                 
             except Exception as e:

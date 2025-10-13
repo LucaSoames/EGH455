@@ -66,6 +66,82 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Time Range Section */
+.time-range-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.time-range-section h3 {
+  margin: 0 0 1rem 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.time-range-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.time-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.time-input-group label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.9rem;
+}
+
+.date-input,
+.time-input {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  background: white;
+}
+
+.date-input:focus,
+.time-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.quick-range-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-quick-range {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #ecf0f1;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.btn-quick-range:hover {
+  background-color: #3498db;
+  color: white;
+  transform: translateY(-1px);
+}
+
+.btn-quick-range:active {
+  transform: translateY(0);
+}
+
 .search-form {
   display: flex;
   gap: 0.5rem;
@@ -362,6 +438,18 @@
 @media (max-width: 768px) {
   .stats-dashboard {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .time-range-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-range-buttons {
+    flex-direction: column;
+  }
+
+  .btn-quick-range {
+    width: 100%;
   }
 
   .filter-controls {

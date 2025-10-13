@@ -10,7 +10,7 @@ data format.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 @dataclass
 class YoloDetection:
@@ -62,13 +62,20 @@ class GasReadings:
 
 @dataclass
 class EnvironmentalData:
-    """Stores sensor readings from the Enviro+ board."""
-    temperature_c: float
-    pressure_hpa: float
-    humidity_rh: float
-    light_lux: float
-    pi_temperature_c: Optional[float] = None  # Raspberry Pi CPU temperature
-    gas_readings: Optional[GasReadings] = None
+    """Environmental data collected from Enviro+ sensors"""
+    temperature: float
+    humidity: float
+    pressure: float
+    light: float
+    created_at: str
+
+@dataclass
+class DrillEvent:
+    """Drill event data for audit logging"""
+    action: str
+    details: str
+    status: str = "info"
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class PayloadData:
@@ -81,3 +88,4 @@ class PayloadData:
     aruco_markers: List[ArucoDetection] = field(default_factory=list)
     gauge_pressure_bar: Optional[float] = None
     environmental_data: Optional[EnvironmentalData] = None
+    drill_events: List[DrillEvent] = field(default_factory=list)

@@ -231,6 +231,23 @@ class GCSServer:
                                 marker_count=len(aruco_markers),
                                 marker_ids=marker_ids
                             )
+                        
+                        # Log drill events
+                        drill_events = data.get('drill_events', [])
+                        for event in drill_events:
+                            action = event.get('action', 'Unknown')
+                            details = event.get('details', '')
+                            status = event.get('status', 'info')
+                            metadata = event.get('metadata', {})
+                            
+                            audit_logger = get_audit_logger()
+                            audit_logger.log_event(
+                                event_type='drill',
+                                action=action,
+                                details=details,
+                                status=status,
+                                **metadata
+                            )
                     
                     # Broadcast the FULL telemetry data to WebSocket clients
                     self.socketio.emit('telemetry_update', data)

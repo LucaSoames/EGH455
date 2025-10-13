@@ -258,12 +258,18 @@ class MainApp:
         
         # Send telemetry data
         if (now - self.last_telem_time) >= (1.0 / config.POST_TELEM_HZ):
+            # Get pending drill events
+            drill_events = []
+            if self.drill_controller:
+                drill_events = self.drill_controller.get_pending_events()
+            
             payload = PayloadData(
                 timestamp=datetime.now().isoformat(),
                 yolo_detections=yolo_detections,
                 aruco_markers=aruco_detections,
                 gauge_pressure_bar=gauge_reading,
-                environmental_data=env_data
+                environmental_data=env_data,
+                drill_events=drill_events
             )
             self.gcs_client.send_data(payload)
             self.last_telem_time = now

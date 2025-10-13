@@ -34,8 +34,15 @@ function AuditLogsDatabase() {
   const [totalCount, setTotalCount] = useState<number>(0);
   const logsPerPage = 50;
 
+  // Time range filters
+  const [startDate, setStartDate] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('00:00');
+  const [endDate, setEndDate] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('23:59');
+
   // Auto-refresh toggle
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
+  const [refreshCountdown, setRefreshCountdown] = useState<number>(10);
 
   // Fetch logs from the API
   const fetchLogs = async () => {
@@ -52,6 +59,16 @@ function AuditLogsDatabase() {
       if (searchQuery) params.append('search', searchQuery);
       if (eventTypeFilter !== 'all') params.append('event_type', eventTypeFilter);
       if (statusFilter !== 'all') params.append('status', statusFilter);
+      
+      // Add time range filters
+      if (startDate) {
+        const startDateTime = `${startDate}T${startTime}:00`;
+        params.append('start_date', startDateTime);
+      }
+      if (endDate) {
+        const endDateTime = `${endDate}T${endTime}:59`;
+        params.append('end_date', endDateTime);
+      }
 
       const response = await fetch(`${window.location.origin}/api/audit/logs?${params}`);
       
@@ -90,19 +107,31 @@ function AuditLogsDatabase() {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-  }, [currentPage, searchQuery, eventTypeFilter, statusFilter]);
+  }, [currentPage, searchQuery, eventTypeFilter, statusFilter, startDate, startTime, endDate, endTime]);
 
-  // Auto-refresh every 5 seconds if enabled
+  // Auto-refresh every 10 seconds if enabled
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
       fetchLogs();
       fetchStats();
-    }, 5000);
+      setRefreshCountdown(10); // Reset countdown
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, currentPage, searchQuery, eventTypeFilter, statusFilter]);
+  }, [autoRefresh, currentPage, searchQuery, eventTypeFilter, statusFilter, startDate, startTime, endDate, endTime]);
+
+  // Countdown timer for auto-refresh
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const countdown = setInterval(() => {
+      setRefreshCountdown(prev => (prev > 0 ? prev - 1 : 10));
+    }, 1000);
+
+    return () => clearInterval(countdown);
+  }, [autoRefresh]);
 
   const getStatusColor = (status: string): string => {
     switch (status) {
@@ -144,6 +173,50 @@ function AuditLogsDatabase() {
     setSearchQuery('');
     setEventTypeFilter('all');
     setStatusFilter('all');
+    setStartDate('');
+    setStartTime('00:00');
+    setEndDate('');
+    setEndTime('23:59');
+    setCurrentPage(1);
+  };
+
+  const setQuickRange = (range: 'today' | 'yesterday' | '7days' | '30days') => {
+    const now = new Date();
+    const endD = now.toISOString().split('T')[0];
+    const endT = now.toTimeString().slice(0, 5);
+    
+    let startD: string;
+    const startT = '00:00';
+    
+    switch (range) {
+      case 'today':
+        startD = endD;
+        break;
+      case 'yesterday':
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        startD = yesterday.toISOString().split('T')[0];
+        setEndDate(startD);
+        setEndTime('23:59');
+        break;
+      case '7days':
+        const week = new Date(now);
+        week.setDate(week.getDate() - 7);
+        startD = week.toISOString().split('T')[0];
+        break;
+      case '30days':
+        const month = new Date(now);
+        month.setDate(month.getDate() - 30);
+        startD = month.toISOString().split('T')[0];
+        break;
+    }
+    
+    setStartDate(startD);
+    setStartTime(startT);
+    if (range !== 'yesterday') {
+      setEndDate(endD);
+      setEndTime(endT);
+    }
     setCurrentPage(1);
   };
 
@@ -201,6 +274,69 @@ function AuditLogsDatabase() {
 
       {/* Filters and Search */}
       <div className="filters-section">
+        {/* Time Range Selection */}
+        <div className="time-range-section">
+          <h3>Time Range</h3>
+          <div className="time-range-controls">
+            <div className="time-input-group">
+              <label>Start Date:</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="date-input"
+              />
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="time-input"
+              />
+            </div>
+            <div className="time-input-group">
+              <label>End Date:</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="date-input"
+              />
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="time-input"
+              />
+            </div>
+          </div>
+          <div className="quick-range-buttons">
+            <button onClick={() => setQuickRange('today')} className="btn btn-quick-range">
+              Today
+            </button>
+            <button onClick={() => setQuickRange('yesterday')} className="btn btn-quick-range">
+              Yesterday
+            </button>
+            <button onClick={() => setQuickRange('7days')} className="btn btn-quick-range">
+              Last 7 Days
+            </button>
+            <button onClick={() => setQuickRange('30days')} className="btn btn-quick-range">
+              Last 30 Days
+            </button>
+          </div>
+        </div>
+
         <form onSubmit={handleSearch} className="search-form">
           <input
             type="text"
@@ -257,7 +393,7 @@ function AuditLogsDatabase() {
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
             />
-            Auto-refresh
+            Auto-refresh {autoRefresh && `(${refreshCountdown}s)`}
           </label>
         </div>
       </div>

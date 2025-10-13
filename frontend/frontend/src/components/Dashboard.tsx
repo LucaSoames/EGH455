@@ -4,6 +4,7 @@ import VideoStream from './VideoStream';
 import AuditLogs from './AuditLogs';
 import AuditLogsDatabase from './AuditLogsDatabase';
 import LCDControl from './LCDControl';
+import EnviroLiveCharts from './EnviroLiveCharts';
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'audit' | 'audit-db'>('overview');
@@ -79,6 +80,9 @@ function Dashboard() {
               <VideoStream />
             </div>
           </div>
+
+          {/* Enviro Live Charts */}
+          <EnviroLiveCharts />
 
           {/* LCD Control Section - Full Width Below */}
           <div style={{ marginTop: '2rem' }}>

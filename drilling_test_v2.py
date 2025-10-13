@@ -38,13 +38,13 @@ pwm.start(STOP_DUTY)
 time.sleep(0.5)  # settle
 
 try:
-    print("Clockwise for 10 seconds…")
-    pwm.ChangeDutyCycle(CW_DUTY)
-    time.sleep(30)
+    # print("Clockwise for 10 seconds…")
+    # pwm.ChangeDutyCycle(CW_DUTY)
+    # time.sleep(30)
 
-    print("Stop for 1 second…")
-    pwm.ChangeDutyCycle(STOP_DUTY)
-    time.sleep(1)
+    # print("Stop for 1 second…")
+    # pwm.ChangeDutyCycle(STOP_DUTY)
+    # time.sleep(1)
 
     print("Anticlockwise for 10 seconds…")
     pwm.ChangeDutyCycle(CCW_DUTY)

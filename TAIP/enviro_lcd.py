@@ -159,7 +159,7 @@ class LCDDisplay:
                     cs=1,
                     dc="GPIO9",
                     backlight="GPIO12",
-                    rotation=270,
+                    rotation=90,
                     spi_speed_hz=10000000
                 )
                 self.lcd.begin()

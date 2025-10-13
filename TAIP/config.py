@@ -87,7 +87,7 @@ SHOW_GAUGE_OVERLAY = True  # Overlay gauge calibration on output image
 # --- Drilling Subsystem Configuration ---
 DRILL_GPIO_PIN = 13
 DRILL_PRESSURE_THRESHOLD = 2.0  # Activate drill below this pressure
-DRILL_DURATION_SEC = 5.0       # Duration to run drill once activated (~45 seconds)
+DRILL_DURATION_SEC = 45.0       # Duration to run drill once activated (~45 seconds)
 DRILL_TRIGGER_COUNT = 3         # Hysteresis parameter (consecutive readings required to trigger)
 PWM_FREQUENCY = 50              # Hz
 STOP_DUTY = 7.5                 # ~1.5ms pulse - stop

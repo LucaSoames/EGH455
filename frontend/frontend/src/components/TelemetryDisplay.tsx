@@ -71,7 +71,7 @@ function TelemetryDisplay() {
   if (!connected) {
     return (
       <div className="card">
-        <p style={{ color: '#e74c3c' }}>⚠️ Disconnected from server</p>
+        <p style={{ color: '#e74c3c' }}>Disconnected from server</p>
       </div>
     );
   }
@@ -79,7 +79,7 @@ function TelemetryDisplay() {
   if (!telemetry) {
     return (
       <div className="card">
-        <p>📡 Waiting for telemetry data...</p>
+        <p>Waiting for telemetry data...</p>
       </div>
     );
   }
@@ -95,9 +95,7 @@ function TelemetryDisplay() {
   return (
     <div className="card">
       <div style={{ marginBottom: '1rem' }}>
-        <span style={{ color: getStatusColor(), fontWeight: 'bold' }}>
-          ● {connected ? 'CONNECTED' : 'DISCONNECTED'}
-        </span>
+        <span style={{ color: getStatusColor(), fontWeight: 'bold' }}>{connected ? 'CONNECTED' : 'DISCONNECTED'}</span>
         <span style={{ float: 'right', color: '#666', fontSize: '0.9rem' }}>
           TAIP PAYLOAD
         </span>
@@ -115,28 +113,28 @@ function TelemetryDisplay() {
       <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#666' }}>Environmental Data</h3>
       <div className="telemetry-grid">
         <div className="telemetry-item">
-          <span>🌡️ Temperature</span>
+          <span>Temperature</span>
           <strong>{env?.temperature_c?.toFixed(1) || 'N/A'}°C</strong>
         </div>
         
         <div className="telemetry-item">
-          <span>💧 Humidity</span>
+          <span>Humidity</span>
           <strong>{env?.humidity_rh?.toFixed(1) || 'N/A'}%</strong>
         </div>
         
         <div className="telemetry-item">
-          <span>🌀 Pressure</span>
+          <span>Pressure</span>
           <strong>{env?.pressure_hpa?.toFixed(1) || 'N/A'} hPa</strong>
         </div>
         
         <div className="telemetry-item">
-          <span>💡 Light</span>
+          <span>Light</span>
           <strong>{env?.light_lux?.toFixed(0) || 'N/A'} lux</strong>
         </div>
 
         {env?.pi_temperature_c != null && (
           <div className="telemetry-item">
-            <span>🖥️ Pi CPU Temp</span>
+            <span>Pi CPU Temp</span>
             <strong>{env.pi_temperature_c.toFixed(1)}°C</strong>
           </div>
         )}
@@ -149,21 +147,21 @@ function TelemetryDisplay() {
           <div className="telemetry-grid">
             {env.gas_readings.reducing_ppm != null && (
               <div className="telemetry-item">
-                <span>🧪 CO (Reducing)</span>
+                <span>CO (Reducing)</span>
                 <strong>{env.gas_readings.reducing_ppm.toFixed(1)} ppm</strong>
               </div>
             )}
             
             {env.gas_readings.oxidising_ppm != null && (
               <div className="telemetry-item">
-                <span>🧪 NO₂ (Oxidising)</span>
+                <span>NO2 (Oxidising)</span>
                 <strong>{env.gas_readings.oxidising_ppm.toFixed(1)} ppm</strong>
               </div>
             )}
             
             {env.gas_readings.nh3_ppm != null && (
               <div className="telemetry-item">
-                <span>🧪 NH₃</span>
+                <span>NH3</span>
                 <strong>{env.gas_readings.nh3_ppm.toFixed(1)} ppm</strong>
               </div>
             )}
@@ -175,18 +173,18 @@ function TelemetryDisplay() {
       <h3 style={{ marginTop: '1.5rem', marginBottom: '1rem', fontSize: '1rem', color: '#666' }}>Vision System</h3>
       <div className="telemetry-grid">
         <div className="telemetry-item">
-          <span>👁️ YOLO Detections</span>
+          <span>YOLO Detections</span>
           <strong>{telemetry.yolo_detections?.length || 0}</strong>
         </div>
         
         <div className="telemetry-item">
-          <span>📍 ArUco Markers</span>
+          <span>ArUco Markers</span>
           <strong>{telemetry.aruco_markers?.length || 0}</strong>
         </div>
         
         {telemetry.aruco_markers && telemetry.aruco_markers.length > 0 && (
           <div className="telemetry-item">
-            <span>📏 Marker Distance</span>
+            <span>Marker Distance</span>
             <strong>{telemetry.aruco_markers[0].distance_m.toFixed(2)} m</strong>
           </div>
         )}

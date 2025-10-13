@@ -63,7 +63,7 @@ function VideoStream() {
           onClick={toggleStream} 
           className={`btn ${streamActive ? 'btn-danger' : 'btn-primary'}`}
         >
-          {streamActive ? '⏹️ Stop Stream' : '▶️ Start Stream'}
+          {streamActive ? 'Stop Stream' : 'Start Stream'}
         </button>
       </div>
 
@@ -93,7 +93,7 @@ function VideoStream() {
                 color: '#6c757d'
               }}
             >
-              📡 Waiting for video frames...
+              Waiting for video frames...
             </div>
           )
         ) : !connected ? (
@@ -110,7 +110,7 @@ function VideoStream() {
               color: '#e53e3e'
             }}
           >
-            ⚠️ Not connected to server
+            Not connected to server
           </div>
         ) : (
           <div 
@@ -126,7 +126,7 @@ function VideoStream() {
               color: '#6c757d'
             }}
           >
-            📹 Click "Start Stream" to begin video feed
+            Click "Start Stream" to begin video feed
           </div>
         )}
       </div>

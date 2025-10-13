@@ -50,7 +50,7 @@ const AuditLogs = () => {
       
       // Process telemetry data and create events
       if (data.gauge_pressure_bar !== undefined) {
-        const action = data.gauge_pressure_bar > 2.0 ? '⚠️ High pressure detected' : '📊 Pressure reading';
+  const action = data.gauge_pressure_bar > 2.0 ? 'High pressure detected' : 'Pressure reading';
         newEvents.push({
           id: `pressure_${Date.now()}`,
           type: 'telemetry',
@@ -64,7 +64,7 @@ const AuditLogs = () => {
         newEvents.push({
           id: `temp_${Date.now() + 1}`,
           type: 'telemetry',
-          message: `Temperature: ${data.temperature.toFixed(1)}°C`,
+          message: `Temperature: ${data.temperature.toFixed(1)} C`,
           timestamp: new Date().toISOString(),
           data: { temperature: data.temperature }
         });
@@ -170,14 +170,14 @@ const AuditLogs = () => {
 
   const getEventIcon = (type) => {
     switch (type) {
-      case 'telemetry': return '📊';
-      case 'system': return '⚙️';
-      case 'drill': return '🔧';
-      case 'camera': return '📷';
-      case 'detection': return '🎯';
-      case 'aruco': return '🏷️';
-      case 'error': return '❌';
-      default: return '📝';
+  case 'telemetry': return '';
+  case 'system': return '';
+  case 'drill': return '';
+  case 'camera': return '';
+  case 'detection': return '';
+  case 'aruco': return '';
+  case 'error': return '';
+  default: return '';
     }
   };
 
@@ -200,7 +200,7 @@ const AuditLogs = () => {
   if (!connected) {
     return (
       <div className="card">
-        <p style={{ color: '#393939ff' }}>⚠️ Not connected to TAIP system</p>
+  <p style={{ color: '#393939ff' }}>Not connected to TAIP system</p>
       </div>
     );
   }
@@ -213,19 +213,19 @@ const AuditLogs = () => {
           <h3>System Status</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div className="telemetry-item">
-              <span>⏱️ Uptime</span>
+              <span>Uptime</span>
               <strong>{formatUptime(stats.uptime_seconds)}</strong>
             </div>
             <div className="telemetry-item">
-              <span>📊 Total Events</span>
+              <span>Total Events</span>
               <strong>{stats.total_events}</strong>
             </div>
             <div className="telemetry-item">
-              <span>🕐 Last Hour</span>
+              <span>Last Hour</span>
               <strong>{stats.events_last_hour}</strong>
             </div>
             <div className="telemetry-item">
-              <span>🔧 Drill Status</span>
+              <span>Drill Status</span>
               <strong style={{ color: stats.drill_active ? '#e74c3c' : '#27ae60' }}>
                 {stats.drill_active ? 'ACTIVE' : 'IDLE'}
               </strong>

@@ -183,13 +183,13 @@ function AuditLogs() {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'telemetry': return '📊';
-      case 'system': return '⚙️';
-      case 'drill': return '🔧';
-      case 'camera': return '📷';
-      case 'sensor': return '🌡️';
-      case 'vision': return '👁️';
-      default: return '📝';
+      case 'telemetry': return '';
+      case 'system': return '';
+      case 'drill': return '';
+      case 'camera': return '';
+      case 'sensor': return '';
+      case 'vision': return '';
+      default: return '';
     }
   };
 
@@ -206,7 +206,7 @@ function AuditLogs() {
   if (!connected) {
     return (
       <div className="card">
-        <p style={{ color: '#e74c3c' }}>⚠️ Not connected to TAIP system</p>
+        <p style={{ color: '#e74c3c' }}>Not connected to TAIP system</p>
       </div>
     );
   }
@@ -219,19 +219,19 @@ function AuditLogs() {
           <h3>System Status</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div className="telemetry-item">
-              <span>⏱️ Uptime</span>
+              <span>Uptime</span>
               <strong>{formatUptime(stats.uptime_seconds)}</strong>
             </div>
             <div className="telemetry-item">
-              <span>� Total Events</span>
+              <span>Total Events</span>
               <strong>{stats.total_events}</strong>
             </div>
             <div className="telemetry-item">
-              <span>🕐 Last Hour</span>
+              <span>Last Hour</span>
               <strong>{stats.events_last_hour}</strong>
             </div>
             <div className="telemetry-item">
-              <span>🔧 Drill Status</span>
+              <span>Drill Status</span>
               <strong style={{ color: stats.drill_active ? '#e74c3c' : '#27ae60' }}>
                 {stats.drill_active ? 'ACTIVE' : 'INACTIVE'}
               </strong>

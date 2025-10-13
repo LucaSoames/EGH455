@@ -153,7 +153,7 @@ const VideoStream = () => {
             fontSize: '0.8em',
             fontWeight: 'bold'
           }}>
-            {connected ? '🟢 CONNECTED' : '🔴 DISCONNECTED'}
+            {connected ? 'CONNECTED' : 'DISCONNECTED'}
           </div>
           <div style={{ fontSize: '0.9em', color: '#666' }}>
             FPS: {fps} | Frames: {frameCount}
@@ -180,7 +180,7 @@ const VideoStream = () => {
           />
         ) : (
           <div style={{ padding: '2rem', color: '#666' }}>
-            <div style={{ fontSize: '3em', marginBottom: '1rem' }}>📷</div>
+            <div style={{ fontSize: '3em', marginBottom: '1rem' }}>Camera</div>
             <p>Camera feed not available</p>
             <p style={{ fontSize: '0.9em' }}>
               Waiting for connection to TAIP system...

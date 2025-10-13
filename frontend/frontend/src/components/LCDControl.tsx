@@ -11,9 +11,9 @@ function LCDControl() {
   const [sending, setSending] = useState<boolean>(false);
 
   const tabs = [
-    { index: 0, name: 'IP', icon: '🌐', description: 'IP Address' },
-    { index: 1, name: 'CAM', icon: '📷', description: 'Camera Feed' },
-    { index: 2, name: 'TEMP', icon: '🌡️', description: 'Temperature' }
+    { index: 0, name: 'IP', icon: 'IP', description: 'IP Address' },
+    { index: 1, name: 'CAM', icon: 'CAM', description: 'Camera Feed' },
+    { index: 2, name: 'TEMP', icon: 'TEMP', description: 'Temperature' }
   ];
 
   useEffect(() => {
@@ -87,7 +87,7 @@ function LCDControl() {
           fontSize: '0.8rem',
           fontWeight: 'bold'
         }}>
-          {connected ? '● CONNECTED' : '○ DISCONNECTED'}
+          {connected ? 'CONNECTED' : 'DISCONNECTED'}
         </div>
       </div>
 
@@ -170,7 +170,7 @@ function LCDControl() {
           cursor: connected && !sending ? 'pointer' : 'not-allowed'
         }}
       >
-        {sending ? '⏳ Sending...' : '🔄 Cycle to Next Tab'}
+        {sending ? 'Sending...' : 'Cycle to Next Tab'}
       </button>
 
       {!connected && (
@@ -184,7 +184,7 @@ function LCDControl() {
           fontSize: '0.85rem',
           textAlign: 'center'
         }}>
-          ⚠️ Not connected to Pi - LCD control unavailable
+          Not connected to Pi - LCD control unavailable
         </div>
       )}
     </div>

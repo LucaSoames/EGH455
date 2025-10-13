@@ -144,15 +144,15 @@ function AuditLogsDatabase() {
 
   const getTypeIcon = (type: string): string => {
     switch (type) {
-      case 'telemetry': return '📊';
-      case 'system': return '⚙️';
-      case 'drill': return '🔧';
-      case 'camera': return '📷';
-      case 'sensor': return '🌡️';
-      case 'vision': return '👁️';
-      case 'network': return '🌐';
-      case 'error': return '❌';
-      default: return '📝';
+      case 'telemetry': return '';
+      case 'system': return '';
+      case 'drill': return '';
+      case 'camera': return '';
+      case 'sensor': return '';
+      case 'vision': return '';
+      case 'network': return '';
+      case 'error': return '';
+      default: return '';
     }
   };
 
@@ -228,42 +228,42 @@ function AuditLogsDatabase() {
       {stats && (
         <div className="stats-dashboard">
           <div className="stat-card">
-            <div className="stat-icon">📈</div>
+            <div className="stat-icon">Total</div>
             <div className="stat-content">
               <div className="stat-label">Total Events</div>
               <div className="stat-value">{stats.total_events.toLocaleString()}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">🕐</div>
+            <div className="stat-icon">Hour</div>
             <div className="stat-content">
               <div className="stat-label">Last Hour</div>
               <div className="stat-value">{stats.events_last_hour}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">📅</div>
+            <div className="stat-icon">Day</div>
             <div className="stat-content">
               <div className="stat-label">Last 24 Hours</div>
               <div className="stat-value">{stats.events_last_day}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">✅</div>
+            <div className="stat-icon">OK</div>
             <div className="stat-content">
               <div className="stat-label">Success</div>
               <div className="stat-value">{stats.events_by_status.success || 0}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">⚠️</div>
+            <div className="stat-icon">Warn</div>
             <div className="stat-content">
               <div className="stat-label">Warnings</div>
               <div className="stat-value">{stats.events_by_status.warning || 0}</div>
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-icon">❌</div>
+            <div className="stat-icon">Err</div>
             <div className="stat-content">
               <div className="stat-label">Errors</div>
               <div className="stat-value">{stats.events_by_status.error || 0}</div>
@@ -401,7 +401,7 @@ function AuditLogsDatabase() {
       {/* Error Message */}
       {error && (
         <div className="error-message">
-          ⚠️ Error: {error}
+          Error: {error}
         </div>
       )}
 

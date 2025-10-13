@@ -33,7 +33,7 @@ function Dashboard() {
               cursor: 'pointer'
             }}
           >
-            📊 Overview
+            Overview
           </button>
           <button
             onClick={() => setActiveTab('audit-db')}
@@ -47,7 +47,7 @@ function Dashboard() {
               cursor: 'pointer'
             }}
           >
-            📋 Audit Logs (Database)
+            Audit Logs (Database)
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -61,7 +61,7 @@ function Dashboard() {
               cursor: 'pointer'
             }}
           >
-            📝 Live Events
+            Live Events
           </button>
         </div>
       </div>

@@ -10,3 +10,9 @@ TAIP/taip_env/*
 models/training
 models/testing/videos
 models/oak-examples
+TAIP/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.sqlite3

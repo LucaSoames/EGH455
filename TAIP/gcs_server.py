@@ -101,10 +101,9 @@ class GCSServer:
         self._setup_routes()
         self._setup_socket_handlers()
         
-        # Initialize audit logger in SERVER mode (force local database)
+        # Initialize audit logger
         if AUDIT_LOGGING_AVAILABLE:
-            from audit_logger import AuditLogger
-            self.audit_logger = AuditLogger(force_server_mode=True)
+            self.audit_logger = get_audit_logger()
             log_system("GCS Server Started", f"Initialized on {host}:{port}", "success")
         else:
             self.audit_logger = None
@@ -422,45 +421,6 @@ class GCSServer:
                 }, 200
             except Exception as e:
                 print(f"[ERROR] Clear audit logs error: {e}")
-                return {"error": str(e)}, 500
-
-        @self.app.route('/api/audit/log', methods=['POST'])
-        def receive_audit_log():
-            """Receive an audit log entry from a remote client (e.g., Pi)."""
-            if not AUDIT_LOGGING_AVAILABLE:
-                return {"error": "Audit logging not available"}, 503
-            
-            try:
-                data = request.get_json()
-                if not data:
-                    return {"error": "No data received"}, 400
-                
-                # Extract log fields
-                event_type = data.get('event_type')
-                action = data.get('action')
-                details = data.get('details', '')
-                status = data.get('status', 'info')
-                metadata = data.get('metadata')
-                
-                # Validate required fields
-                if not event_type or not action:
-                    return {"error": "Missing required fields: event_type, action"}, 400
-                
-                # Write to local database using the logger's method
-                log_id = self.audit_logger.log(
-                    event_type=event_type,
-                    action=action,
-                    details=details,
-                    status=status,
-                    metadata=metadata
-                )
-                
-                # Quick response
-                return {"status": "ok", "id": log_id}, 200
-                
-            except Exception as e:
-                print(f"[ERROR] Receive audit log error: {e}")
-                traceback.print_exc()
                 return {"error": str(e)}, 500
 
         @self.app.route('/')

@@ -63,11 +63,12 @@ class GasReadings:
 @dataclass
 class EnvironmentalData:
     """Environmental data collected from Enviro+ sensors"""
-    temperature: float
-    humidity: float
-    pressure: float
-    light: float
-    created_at: str
+    temperature_c: float
+    pressure_hpa: float
+    humidity_rh: float
+    light_lux: float
+    pi_temperature_c: Optional[float] = None  # Raspberry Pi CPU temperature
+    gas_readings: Optional[GasReadings] = None
 
 @dataclass
 class DrillEvent:

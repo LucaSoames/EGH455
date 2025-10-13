@@ -241,12 +241,12 @@ class GCSServer:
                             metadata = event.get('metadata', {})
                             
                             audit_logger = get_audit_logger()
-                            audit_logger.log_event(
+                            audit_logger.log(
                                 event_type='drill',
                                 action=action,
                                 details=details,
                                 status=status,
-                                **metadata
+                                metadata=metadata
                             )
                     
                     # Broadcast the FULL telemetry data to WebSocket clients

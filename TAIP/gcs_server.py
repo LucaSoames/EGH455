@@ -161,6 +161,15 @@ class GCSServer:
                                 status=status,
                                 pressure=pressure
                             )
+                            # Emit to live events page
+                            self.socketio.emit('system_event', {
+                                'id': f"pressure_{int(time.time() * 1000)}",
+                                'type': 'telemetry',
+                                'action': 'Pressure Reading',
+                                'details': f"Gauge pressure: {pressure:.2f} bar",
+                                'timestamp': datetime.now().isoformat(),
+                                'status': status
+                            })
                         
                         # Log environmental data
                         env_data = data.get('environmental_data')
@@ -200,6 +209,15 @@ class GCSServer:
                                     pressure_hpa=press,
                                     light=light
                                 )
+                                # Emit to live events page
+                                self.socketio.emit('system_event', {
+                                    'id': f"env_{int(time.time() * 1000)}",
+                                    'type': 'sensor',
+                                    'action': 'Environmental Reading',
+                                    'details': ", ".join(details_parts),
+                                    'timestamp': datetime.now().isoformat(),
+                                    'status': env_status
+                                })
                         
                         # Log YOLO detections
                         detections = data.get('yolo_detections', [])
@@ -215,6 +233,15 @@ class GCSServer:
                                 count=len(detections),
                                 classes=classes if detections else []
                             )
+                            # Emit to live events page
+                            self.socketio.emit('system_event', {
+                                'id': f"detection_{int(time.time() * 1000)}",
+                                'type': 'vision',
+                                'action': 'Object Detection',
+                                'details': detection_summary,
+                                'timestamp': datetime.now().isoformat(),
+                                'status': 'info'
+                            })
                         
                         # Log ArUco markers
                         aruco_markers = data.get('aruco_markers', [])
@@ -231,6 +258,15 @@ class GCSServer:
                                 marker_count=len(aruco_markers),
                                 marker_ids=marker_ids
                             )
+                            # Emit to live events page
+                            self.socketio.emit('system_event', {
+                                'id': f"aruco_{int(time.time() * 1000)}",
+                                'type': 'vision',
+                                'action': 'ArUco Detection',
+                                'details': details,
+                                'timestamp': datetime.now().isoformat(),
+                                'status': 'success'
+                            })
                         
                         # Log drill events
                         drill_events = data.get('drill_events', [])
@@ -248,6 +284,15 @@ class GCSServer:
                                 status=status,
                                 metadata=metadata
                             )
+                            # Emit to live events page
+                            self.socketio.emit('system_event', {
+                                'id': f"drill_{int(time.time() * 1000)}",
+                                'type': 'drill',
+                                'action': action,
+                                'details': details,
+                                'timestamp': datetime.now().isoformat(),
+                                'status': status
+                            })
                     
                     # Broadcast the FULL telemetry data to WebSocket clients
                     self.socketio.emit('telemetry_update', data)

@@ -10,18 +10,8 @@ interface SystemEvent {
   status: 'info' | 'warning' | 'error' | 'success';
 }
 
-interface SystemStats {
-  uptime_seconds: number;
-  total_events: number;
-  events_last_hour: number;
-  system_status: string;
-  drill_active: boolean;
-  pressure_status: string;
-}
-
 function AuditLogs() {
   const [events, setEvents] = useState<SystemEvent[]>([]);
-  const [stats, setStats] = useState<SystemStats | null>(null);
   const [connected, setConnected] = useState<boolean>(false);
   const [filter, setFilter] = useState<string>('all');
 
@@ -37,8 +27,6 @@ function AuditLogs() {
     socket.on('connect', () => {
       console.log('AuditLogs: Connected to server');
       setConnected(true);
-      socket.emit('request_system_logs', {});
-      socket.emit('request_system_stats', {});
     });
 
     socket.on('disconnect', () => {
@@ -48,10 +36,6 @@ function AuditLogs() {
 
     socket.on('system_event', (event: SystemEvent) => {
       setEvents((prev: SystemEvent[]) => [event, ...prev.slice(0, 99)]); // Keep last 100 events
-    });
-
-    socket.on('system_stats', (statsData: SystemStats) => {
-      setStats(statsData);
     });
 
     // Listen for LCD control events
@@ -68,103 +52,6 @@ function AuditLogs() {
         },
         ...prev.slice(0, 99)
       ]); // Keep last 100 events
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-  // Simulate system events based on telemetry updates
-  useEffect(() => {
-    const socket = io(window.location.origin, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5
-    });
-
-    socket.on('telemetry_update', (data: any) => {
-      // Create system events based on telemetry data
-      const timestamp = new Date().toISOString();
-      const newEvents: SystemEvent[] = [];
-
-      // Pressure event
-      if (data.gauge_pressure_bar != null) {
-        let status: 'info' | 'warning' | 'error' | 'success' = 'info';
-        let action = 'Pressure Reading';
-        
-        if (data.gauge_pressure_bar < 1.0) {
-          status = 'error';
-          action = 'Critical Pressure';
-        } else if (data.gauge_pressure_bar < 3.0) {
-          status = 'warning';
-          action = 'Low Pressure';
-        } else {
-          status = 'success';
-          action = 'Normal Pressure';
-        }
-
-        newEvents.push({
-          id: `pressure_${Date.now()}`,
-          type: 'telemetry',
-          action,
-          details: `Gauge pressure: ${data.gauge_pressure_bar.toFixed(2)} bar`,
-          timestamp,
-          status
-        });
-      }
-
-      // Environmental events (from environmental_data object)
-      const env = data.environmental_data;
-      if (env?.temperature_c != null) {
-        let status: 'info' | 'warning' | 'error' | 'success' = 'info';
-        if (env.temperature_c > 40) {
-          status = 'warning';
-        } else if (env.temperature_c < 0) {
-          status = 'error';
-        } else {
-          status = 'info';
-        }
-
-        newEvents.push({
-          id: `temp_${Date.now()}`,
-          type: 'sensor',
-          action: 'Environmental Update',
-          details: `Temp: ${env.temperature_c.toFixed(1)}°C, Humidity: ${env.humidity_rh?.toFixed(1) || 'N/A'}%, Pressure: ${env.pressure_hpa?.toFixed(1) || 'N/A'} hPa`,
-          timestamp,
-          status
-        });
-      }
-
-      // Detection events
-      if (data.yolo_detections?.length > 0) {
-        newEvents.push({
-          id: `detection_${Date.now()}`,
-          type: 'vision',
-          action: 'Object Detection',
-          details: `${data.yolo_detections.length} objects detected`,
-          timestamp,
-          status: 'info'
-        });
-      }
-
-      // ArUco events
-      if (data.aruco_markers?.length > 0) {
-        newEvents.push({
-          id: `aruco_${Date.now()}`,
-          type: 'vision',
-          action: 'ArUco Marker Detected',
-          details: `Marker ID ${data.aruco_markers[0].marker_id} at ${data.aruco_markers[0].distance_m.toFixed(2)}m`,
-          timestamp,
-          status: 'success'
-        });
-      }
-
-      // Add events
-      if (newEvents.length > 0) {
-        setEvents((prev: SystemEvent[]) => [...newEvents, ...prev.slice(0, 97)]); // Keep total under 100
-      }
     });
 
     return () => {
@@ -197,12 +84,6 @@ function AuditLogs() {
     filter === 'all' || event.type === filter
   );
 
-  const formatUptime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  };
-
   if (!connected) {
     return (
       <div className="card">
@@ -213,33 +94,6 @@ function AuditLogs() {
 
   return (
     <div>
-      {/* System Statistics */}
-      {stats && (
-        <div className="card" style={{ marginBottom: '2rem' }}>
-          <h3>System Status</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div className="telemetry-item">
-              <span>⏱️ Uptime</span>
-              <strong>{formatUptime(stats.uptime_seconds)}</strong>
-            </div>
-            <div className="telemetry-item">
-              <span>� Total Events</span>
-              <strong>{stats.total_events}</strong>
-            </div>
-            <div className="telemetry-item">
-              <span>🕐 Last Hour</span>
-              <strong>{stats.events_last_hour}</strong>
-            </div>
-            <div className="telemetry-item">
-              <span>🔧 Drill Status</span>
-              <strong style={{ color: stats.drill_active ? '#e74c3c' : '#27ae60' }}>
-                {stats.drill_active ? 'ACTIVE' : 'INACTIVE'}
-              </strong>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Event Filter */}
       <div className="card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
